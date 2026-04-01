@@ -12,6 +12,22 @@ import org.slf4j.LoggerFactory;
 import java.time.LocalDate;
 import java.util.Locale;
 
+
+
+/**
+ * Agent flow:
+ *
+ * sequential:
+ *   parallel:
+ *     fetchUserProfile
+ *     fetchSeasonalIngredients
+ *   createMealPlan
+ *   NutritionAudit:validate
+ *   optional loop:
+ *     ReviseMealPlan:revise
+ *     NutritionAudit:validate
+ *   Done:createMealPlan
+ */
 @Agent(description = "Supports conscious meal planning and sustainable eating habits.")
 public class NutritionPlanner {
 
