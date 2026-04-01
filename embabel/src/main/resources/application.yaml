@@ -1,0 +1,23 @@
+spring:
+  application.name: nutrition-planner
+  security.user:
+      password: 123456
+      name: alice
+  ai.chat.client.observations:
+      log-completion: true
+embabel.models.default-llm: gpt-5-nano
+
+nutrition-planner:
+  user-profiles:
+    - name: alice
+      dietary-restrictions:
+        - vegetarian
+      health-goals:
+        - weight-loss
+        - improve-energy
+      daily-calorie-target: 1800
+      allergies:
+        - nuts
+      disliked-ingredients:
+        - cilantro
+        - olives
