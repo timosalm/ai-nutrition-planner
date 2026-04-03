@@ -41,7 +41,7 @@ class NutritionPlannerIntegrationTests extends EmbabelMockitoIntegrationTest {
         var request = new WeeklyPlanRequest(
                 List.of(new WeeklyPlanRequest.DayPlanRequest(DayOfWeek.MONDAY,
                         List.of(WeeklyPlanRequest.MealType.BREAKFAST, WeeklyPlanRequest.MealType.LUNCH, WeeklyPlanRequest.MealType.DINNER))),
-                "DE");
+                "DE", "Low-carb meals preferred");
 
         // Step 1 – fetchSeasonalIngredients (parallel with fetchUserProfile, no LLM for profile)
         whenCreateObject(prompt -> prompt.contains("seasonal produce"), SeasonalIngredients.class)

@@ -78,21 +78,26 @@ class NutritionPlanner {
                         Your responsibilities:
                         - Draft recipes, in English based on the user requested meals and days
                         - Use seasonal ingredients as much as possible
+                        - Provide nutrition information for each recipe
                         - Be creative but practical
 
                         # User requested meals and days
                         %s
-                        
+
                         # Seasonal ingredients
                         %s
-                        """.formatted(weeklyPlanRequest, seasonalIngredients),
+
+                        # Additional instructions
+                        %s
+                        """.formatted(weeklyPlanRequest, seasonalIngredients, weeklyPlanRequest.additionalInstructions()),
                         WeeklyPlan.class);
         log.info("NutritionPlanner:createMealPlan action ended with {}", weeklyPlan);
-        return new NutritionAudit(weeklyPlan, seasonalIngredients, userProfile);
+        return new NutritionAudit(weeklyPlan, seasonalIngredients, userProfile, weeklyPlanRequest.additionalInstructions());
     }
 
     @State
-    record NutritionAudit (WeeklyPlan weeklyPlan, SeasonalIngredients seasonalIngredients, UserProfile userProfile) implements Stage {
+    record NutritionAudit (WeeklyPlan weeklyPlan, SeasonalIngredients seasonalIngredients, UserProfile userProfile,
+                           String additionalInstructions) implements Stage {
 
         @Action(canRerun = true)
         Stage validate(Ai ai) {
@@ -106,29 +111,30 @@ class NutritionPlanner {
                         Your job is to validate a list of recipes against a user profile and flag any violations.
 
                         Check each recipe for:
-                        1. CALORIE_OVERFLOW: calories exceed daily calorie target. Use available tools to calculate it.
-                        2. ALLERGEN_PRESENT: recipe contains an ingredient matching user's allergies
-                        3. RESTRICTION_VIOLATION: recipe violates dietary restrictions (e.g., meat for vegetarian)
+                        1. NUTRITION_INFO: Nutrition information is available for each recipe
+                        2. CALORIE_OVERFLOW: calories exceed daily calorie target. Use available tools to calculate it.
+                        3. ALLERGEN_PRESENT: recipe contains an ingredient matching user's allergies
+                        4. RESTRICTION_VIOLATION: recipe violates dietary restrictions (e.g., meat for vegetarian)
                         5. DISLIKED_INGREDIENTS_PRESENT: recipe contains disliked ingredients
                         
-                        Validate these recipes:
+                        # Validate these recipes:
                         %s
                         
-                        Against this user profile:
+                        # Against this user profile:
                         %s
                         """.formatted(weeklyPlan, userProfile), NutritionAuditValidationResult.class);
             log.info("NutritionPlanner:NutritionAudit:validate action ended with {}", validationResult);
             if (validationResult.allPassed()) {
                 return new Done(weeklyPlan);
             }
-            return new ReviseMealPlan(weeklyPlan, seasonalIngredients, userProfile, validationResult);
+            return new ReviseMealPlan(weeklyPlan, seasonalIngredients, userProfile, validationResult, additionalInstructions);
         }
 
     }
 
     @State
     record ReviseMealPlan(WeeklyPlan weeklyPlan, SeasonalIngredients seasonalIngredients, UserProfile userProfile,
-                          NutritionAuditValidationResult validationResult) implements Stage {
+                          NutritionAuditValidationResult validationResult, String additionalInstructions) implements Stage {
 
         @Action(canRerun = true)
         Stage revise(Ai ai) {
@@ -142,12 +148,15 @@ class NutritionPlanner {
 
                         # Recipes
                         %s
-                        
+
                         # Feedback from a nutrition expert
                         %s
-                        """.formatted(weeklyPlan, validationResult), WeeklyPlan.class);
+
+                        # Additional instructions
+                        %s
+                        """.formatted(weeklyPlan, validationResult, additionalInstructions), WeeklyPlan.class);
             log.info("NutritionPlanner:ReviseMealPlan:revise action ended with {}", revisedWeeklyPlan);
-            return new NutritionAudit(revisedWeeklyPlan, seasonalIngredients, userProfile);
+            return new NutritionAudit(revisedWeeklyPlan, seasonalIngredients, userProfile, additionalInstructions);
         }
     }
 
