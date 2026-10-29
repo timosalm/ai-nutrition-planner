@@ -5,10 +5,9 @@ import org.slf4j.LoggerFactory;
 import org.springaicommunity.agent.tools.AskUserQuestionTool;
 import org.springaicommunity.agent.tools.ShellTools;
 import org.springaicommunity.agent.tools.SkillsTool;
-import org.springaicommunity.mcp.annotation.McpTool;
-import org.springaicommunity.tool.search.ToolSearchToolCallAdvisor;
-import org.springaicommunity.tool.search.ToolSearcher;
 import org.springframework.ai.chat.client.ChatClient;
+import org.springframework.ai.chat.memory.ChatMemory;
+import org.springframework.ai.mcp.annotation.McpTool;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.io.Resource;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -16,6 +15,7 @@ import org.springframework.stereotype.Service;
 
 import java.util.Locale;
 import java.util.Map;
+import java.util.UUID;
 
 @Service
 class NutritionPlannerAgent {
@@ -24,16 +24,13 @@ class NutritionPlannerAgent {
 
     private final UserProfileProperties userProfileProperties;
     private final ChatClient chatClient;
-    private final ToolSearcher toolSearcher;
 
     @Value("classpath:skills")
     private Resource skillsResource;
 
-    public NutritionPlannerAgent(UserProfileProperties userProfileProperties, ChatClient.Builder chatClientBuilder,
-                                 ToolSearcher toolSearcher) {
+    public NutritionPlannerAgent(UserProfileProperties userProfileProperties, ChatClient.Builder chatClientBuilder) {
         this.userProfileProperties = userProfileProperties;
         this.chatClient = chatClientBuilder.build();
-        this.toolSearcher = toolSearcher;
     }
 
     @McpTool(description = "Provides a nutrition plan for the week")
@@ -71,13 +68,13 @@ class NutritionPlannerAgent {
                 .user(u -> u.text("""
                         You are a nutrition expert with deep knowledge of seasonal produce.
 
-                        Use the available skill to determine the current month, then return a list of ingredients \
+                        Use the available skill as part for the SkillsTool to determine the current month, then return a list of ingredients \
                         in English that are currently in season for that month in {country}.
                         Focus on fish, meat, fruits, vegetables, and herbs that are at peak availability and quality.
                         """).param("country",country)
                 )
-                .toolCallbacks(skillTool)
-                .tools(new ShellTools()) // Required for SkillsTool, FileSystemTools may be also necessary for other examples
+                .tools(skillTool, ShellTools.builder().build()) // ShellTools is required for SkillsTool, FileSystemTools may be also necessary for other examples
+                .advisors(a -> a.param(ChatMemory.CONVERSATION_ID, UUID.randomUUID().toString())) // Required for Tool Search Advisor
                 .call()
                 .entity(SeasonalIngredients.class);
         log.info("NutritionPlannerAgent:fetchSeasonalIngredients action ended with {}", seasonalIngredients);
@@ -90,6 +87,7 @@ class NutritionPlannerAgent {
 
         var validationRetryAdvisor = new ValidationRetryAdvisor<>(WeeklyPlan.class,
                 plan -> this.validateWeeklyPlan(plan, userProfile));
+
         var askUserQuestionTool = AskUserQuestionTool.builder().questionHandler(questionHandler).build();
 
         var weeklyPlan = chatClient.prompt()
@@ -104,12 +102,13 @@ class NutritionPlannerAgent {
                         # Additional instructions
                         {instructions}
                         
-                        Ask the user for additional information to refine the recipes if there is no current response included! 
-                        Do not ask the user about dietary restrictions, allergies, or nutritional requirements.
+                        Use a tool to ask the user for additional information to refine the recipes if there is no current response included! 
+                        Never ask the user about which meals to include for a weekday, dietary restrictions, allergies, or nutritional requirements.
                         """).param("mealsAndDays", weeklyPlanRequest.meals()).param("ingredients", seasonalIngredients)
                         .param("instructions", weeklyPlanRequest.additionalInstructions())
                 )
                 .advisors(validationRetryAdvisor)
+                .advisors(a -> a.param(ChatMemory.CONVERSATION_ID, UUID.randomUUID().toString())) // Required for Tool Search Advisor
                 .tools(askUserQuestionTool)
                 .call()
                 .entity(WeeklyPlan.class);
@@ -119,7 +118,6 @@ class NutritionPlannerAgent {
 
     private NutritionAuditValidationResult validateWeeklyPlan(WeeklyPlan weeklyPlan, UserProfile userProfile) {
         log.info("NutritionPlannerAgent:validateWeeklyPlan action called");
-        var toolSearchAdvisor = ToolSearchToolCallAdvisor.builder().toolSearcher(toolSearcher).build();
         var validationResult = chatClient.prompt()
                 .system(Personas.NUTRITION_GUARD)
                 .user(u -> u.text("""
@@ -132,7 +130,7 @@ class NutritionPlannerAgent {
                         {userProfile}
                         """).param("weeklyPlan", weeklyPlan).param("userProfile", userProfile)
                 )
-                .advisors(toolSearchAdvisor) // Implements the Tool Search Tool pattern, see https://www.anthropic.com/engineering/advanced-tool-use
+                .advisors(a -> a.param(ChatMemory.CONVERSATION_ID, UUID.randomUUID().toString())) // Required for Tool Search Advisor
                 .tools(weeklyPlan)
                 .call()
                 .entity(NutritionAuditValidationResult.class);

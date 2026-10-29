@@ -48,12 +48,13 @@ class NutritionPlannerUiController extends SseInteractionController {
             var askUserQuestionHandler = new AskUserQuestionHandler(questions -> 
                     sendEvent(interactionId, "fragments/hitl", Map.of("questions", questions)));
             questionHandlers.put(interactionId, askUserQuestionHandler);
-
-            var plan = nutritionPlannerAgent.createNutritionPlan(username, request, askUserQuestionHandler);
-
-            questionHandlers.remove(interactionId);
-            sendEvent(interactionId, "fragments/plan", Map.of("plan", plan));
-            completeInteraction(interactionId);
+            try {
+                var plan = nutritionPlannerAgent.createNutritionPlan(username, request, askUserQuestionHandler);
+                sendEvent(interactionId, "fragments/plan", Map.of("plan", plan));
+                completeInteraction(interactionId);
+            } finally {
+                questionHandlers.remove(interactionId);
+            }
         });
     }
 
@@ -66,7 +67,7 @@ class NutritionPlannerUiController extends SseInteractionController {
     }
 
     private String getAiModelName() {
-        var chatModelDefaultOptions = chatModel.getDefaultOptions();
+        var chatModelDefaultOptions = chatModel.getOptions();
         var provider = chatModel.getClass().getSimpleName().replace("ChatModel", "");
         try {
             var name = (String) FieldUtils.readField(chatModelDefaultOptions, "model", true);

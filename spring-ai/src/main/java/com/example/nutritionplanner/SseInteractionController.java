@@ -1,5 +1,7 @@
 package com.example.nutritionplanner;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.MediaType;
 import org.springframework.ui.Model;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -12,10 +14,13 @@ import java.io.IOException;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Consumer;
 
 abstract class SseInteractionController {
+
+    private static final Logger log = LoggerFactory.getLogger(SseInteractionController.class);
 
     private final ConcurrentHashMap<String, SseEmitter> emitters = new ConcurrentHashMap<>();
     private final TemplateEngine templateEngine;
@@ -33,9 +38,11 @@ abstract class SseInteractionController {
         var interactionId = UUID.randomUUID().toString();
         createEmitter(interactionId);
 
-        CompletableFuture.runAsync(() -> {
-            publisher.accept(interactionId);
-        });
+        CompletableFuture.runAsync(() -> publisher.accept(interactionId))
+                .exceptionally(throwable -> {
+                    failInteraction(interactionId, throwable);
+                    return null;
+                });
 
         model.addAttribute("interactionId", interactionId);
         return "fragments/events :: events";
@@ -61,6 +68,24 @@ abstract class SseInteractionController {
         } catch (IOException e) {
             emitter.completeWithError(e);
         }
+    }
+
+    /**
+     * Reports a failure of the asynchronous work behind an interaction to the browser and closes the
+     * event stream. Without this the exception would be swallowed by the {@link CompletableFuture} and
+     * the stream would stay open forever, leaving the UI waiting for a response that never arrives.
+     */
+    private void failInteraction(String interactionId, Throwable throwable) {
+        var cause = (throwable instanceof CompletionException && throwable.getCause() != null)
+                ? throwable.getCause() : throwable;
+        log.error("Interaction {} failed", interactionId, cause);
+        sendEvent(interactionId, "fragments/error", Map.of("message", errorMessage(cause)));
+        completeInteraction(interactionId);
+    }
+
+    private String errorMessage(Throwable cause) {
+        return cause.getMessage() != null ? "%s: %s".formatted(cause.getClass().getSimpleName(), cause.getMessage())
+                : cause.getClass().getSimpleName();
     }
 
     protected void completeInteraction(String interactionId) {

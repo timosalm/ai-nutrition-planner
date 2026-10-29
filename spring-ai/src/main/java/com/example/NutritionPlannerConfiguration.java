@@ -1,7 +1,5 @@
 package com.example;
 
-import org.springaicommunity.tool.search.ToolSearcher;
-import org.springaicommunity.tool.searcher.LuceneToolSearcher;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.security.config.Customizer;
@@ -21,10 +19,5 @@ class NutritionPlannerConfiguration {
                         .anyRequest().authenticated())
                 .formLogin(form -> form.loginPage("/login").permitAll())
                 .httpBasic(Customizer.withDefaults()).build();
-    }
-
-    @Bean
-    ToolSearcher toolSearcher() {
-        return new LuceneToolSearcher(0.4f);
     }
 }

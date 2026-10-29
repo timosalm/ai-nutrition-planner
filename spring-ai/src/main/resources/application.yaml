@@ -5,23 +5,22 @@ spring:
       password: 123456
       name: alice
   ai:
-    # Define AI provider(s) for type of models for autoconfiguration
-    model:
-      chat: none
-      embedding: none
-      image: none
-      audio:
-        speech: none
-        transcription: none
-      moderation: none
     tools.observations.include-content: true
     mcp.server:
       name: ${spring.application.name}
       protocol: STREAMABLE
+    # Enables the Tool Search Tool pattern, see https://www.anthropic.com/engineering/advanced-tool-use
+    chat.client.tool-search-advisor:
+      enabled: false
+      tool-index-type: lucene
+      lucene.min-score-threshold: 0.4
 
 management:
   endpoints.web.exposure.include: "*"
-  otlp.metrics.export.enabled: false
+  otlp:
+    metrics.export.enabled: false
+    tracing.export.enabled: false
+    logging.export.enabled: false
 
 logging.level:
   org.springaicommunity: debug

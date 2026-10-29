@@ -8,9 +8,9 @@ import org.springframework.ai.chat.client.advisor.api.CallAdvisor;
 import org.springframework.ai.chat.client.advisor.api.CallAdvisorChain;
 import org.springframework.ai.converter.BeanOutputConverter;
 
-import java.util.function.BiFunction;
 import java.util.function.Function;
 
+// More advanced example by the Spring AI team available here: https://github.com/spring-projects/spring-ai-examples/blob/main/advisors/evaluation-recursive-advisor-demo/src/main/java/com/example/advisor/SelfRefineEvaluationAdvisor.java
 class ValidationRetryAdvisor<T> implements CallAdvisor {
 
     private static final Logger log = LoggerFactory.getLogger(ValidationRetryAdvisor.class);
@@ -35,6 +35,11 @@ class ValidationRetryAdvisor<T> implements CallAdvisor {
     public ChatClientResponse adviseCall(ChatClientRequest request, CallAdvisorChain chain) {
         var response = chain.nextCall(request);
         for (int attempt = 0; attempt < maxRetries; attempt++) {
+
+            if (response.chatResponse() == null || response.chatResponse().hasToolCalls()) {
+                return response;
+            }
+
             var entity = toEntity(response);
             var validationResult = validator.apply(entity);
 
