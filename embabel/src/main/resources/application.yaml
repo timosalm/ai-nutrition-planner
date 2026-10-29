@@ -1,5 +1,6 @@
 spring:
   application.name: nutrition-planner
+  profiles.active: openai
   security.user:
       password: 123456
       name: alice
@@ -10,7 +11,6 @@ spring:
 
 embabel:
   agent.platform.process-type: CONCURRENT
-  models.default-llm: gpt-5-nano
   agent.platform.llm-operations.prompts.default-timeout: 180s
   observability:
     service-name: ${spring.application.name}
@@ -18,7 +18,10 @@ embabel:
 
 management:
   endpoints.web.exposure.include: "*"
-  otlp.metrics.export.enabled: false
+  otlp:
+    metrics.export.enabled: false
+    tracing.export.enabled: false
+    logging.export.enabled: false
 
 nutrition-planner:
   user-profiles:

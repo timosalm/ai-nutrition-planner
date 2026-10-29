@@ -95,7 +95,7 @@ class NutritionPlannerAgent {
 
                         IMPORTANT: You MUST provide a recipe for each requested meal. Include complete nutrition information
                         (calories, proteinGrams, carbGrams, fatGrams, sodiumMg) for every recipe.
-                        """.formatted(weeklyPlanRequest.days(), seasonalIngredients, userProfile, weeklyPlanRequest.additionalInstructions()),
+                        """.formatted(weeklyPlanRequest.meals(), seasonalIngredients, userProfile, weeklyPlanRequest.additionalInstructions()),
                         WeeklyPlan.class);
         log.info("NutritionPlannerAgent:createWeeklyPlan action ended with {}", weeklyPlan);
         return new NutritionAudit(weeklyPlan, seasonalIngredients, userProfile, weeklyPlanRequest.additionalInstructions());

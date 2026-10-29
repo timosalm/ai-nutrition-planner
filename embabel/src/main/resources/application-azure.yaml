@@ -1,10 +1,6 @@
 embabel:
-  models:
-    default-llm: gpt-4o-mini
-  agent:
-    platform:
-      models:
-        openai:
-          api-key: ${AZURE_OPENAI_API_KEY}
-          base-url: ${AZURE_OPENAI_ENDPOINT}
-          completions: openai/deployments/${AZURE_OPENAI_DEPLOYMENT_NAME:gpt-4o}/chat/completions?api-version=2024-10-21
+  models.default-llm: gpt-6-sol
+  agent.platform.models.openai:
+    api-key: ${AZURE_OPENAI_API_KEY}
+    base-url: ${AZURE_OPENAI_BASEURL}/openai
+    # completions: openai/deployments/${AZURE_OPENAI_DEPLOYMENT_NAME:gpt-6-sol}/chat/completions?api-version=2024-10-21

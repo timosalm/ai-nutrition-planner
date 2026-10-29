@@ -1,0 +1,3 @@
+embabel:
+  models.default-llm: gpt-6-sol
+  agent.platform.models.openai.api-key: ${OPENAI_API_KEY}
