@@ -2,8 +2,10 @@ package com.example.nutritionplanner;
 
 import com.embabel.agent.api.annotation.*;
 import com.embabel.agent.api.common.Ai;
+import com.embabel.agent.core.hitl.WaitFor;
 import com.embabel.agent.prompt.persona.Persona;
 import com.embabel.agent.skills.Skills;
+import com.embabel.agent.skills.script.ProcessSkillScriptExecutionEngine;
 import com.embabel.common.ai.model.LlmOptions;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -43,7 +45,9 @@ class NutritionPlannerAgent {
     @Action
     UserProfile fetchUserProfile() {
         var auth = SecurityContextHolder.getContext().getAuthentication();
-        return fetchUserProfileForUser(auth.getName());
+        var name = auth.getName();
+        log.info("NutritionPlannerAgent:fetchUserProfile action called for {}", name);
+        return fetchUserProfileForUser(name);
     }
 
     @Action
@@ -53,7 +57,7 @@ class NutritionPlannerAgent {
 
         var skills = new Skills("classpath-skills", "Skills available on the classpath")
                 .withLocalSkills(skillsResource.getFile().toPath().toString())
-                .withScriptExecutionEngine(ProcessSkillScriptExecutionEngineFactory.create()); // see ProcessSkillScriptExecutionEngineFactory.kt
+                .withScriptExecutionEngine(new ProcessSkillScriptExecutionEngine());
 
         var seasonalIngredients = ai
                 .withLlm(LlmOptions.withAutoLlm()) // PromptRunner
@@ -62,7 +66,7 @@ class NutritionPlannerAgent {
                         You are a nutrition expert with deep knowledge of seasonal produce.
 
                         Use the available skill to determine the current month, then return a list of ingredients \
-                        in English that are currently in season for that month in {country}.
+                        in English that are currently in season for that month in %s.
                         Focus on fish, meat, fruits, vegetables, and herbs that are at peak availability and quality.
                         """.formatted(country),
                         SeasonalIngredients.class);
@@ -71,8 +75,14 @@ class NutritionPlannerAgent {
     }
 
     @Action
+    MealPreferences gatherMealPreferences(SeasonalIngredients seasonalIngredients, UserProfile userProfile) {
+        log.info("NutritionPlannerAgent:gatherMealPreferences action called — pausing for user input");
+        return WaitFor.formSubmission("A few questions to tailor your plan", MealPreferences.class);
+    }
+
+    @Action
     NutritionAudit createWeeklyPlan(WeeklyPlanRequest weeklyPlanRequest, SeasonalIngredients seasonalIngredients,
-                                    UserProfile userProfile, Ai ai) {
+                                    UserProfile userProfile, MealPreferences mealPreferences, Ai ai) {
         log.info("NutritionPlannerAgent:createWeeklyPlan action called");
         var weeklyPlan = ai
                 .withLlm(LlmOptions.withAutoLlm())
@@ -90,12 +100,16 @@ class NutritionPlannerAgent {
                         # User profile
                         %s
 
+                        # Meal preferences provided by the user
+                        %s
+
                         # Additional instructions
                         %s
 
                         IMPORTANT: You MUST provide a recipe for each requested meal. Include complete nutrition information
                         (calories, proteinGrams, carbGrams, fatGrams, sodiumMg) for every recipe.
-                        """.formatted(weeklyPlanRequest.meals(), seasonalIngredients, userProfile, weeklyPlanRequest.additionalInstructions()),
+                        """.formatted(weeklyPlanRequest.meals(), seasonalIngredients, userProfile, mealPreferences,
+                                weeklyPlanRequest.additionalInstructions()),
                         WeeklyPlan.class);
         log.info("NutritionPlannerAgent:createWeeklyPlan action ended with {}", weeklyPlan);
         return new NutritionAudit(weeklyPlan, seasonalIngredients, userProfile, weeklyPlanRequest.additionalInstructions());

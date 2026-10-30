@@ -1,14 +1,24 @@
 package com.example.nutritionplanner;
 
 import com.embabel.agent.api.invocation.AgentInvocation;
+import com.embabel.agent.core.AgentProcessStatusCode;
+import com.embabel.agent.core.hitl.FormBindingRequest;
+import com.embabel.agent.core.hitl.FormResponse;
 import com.embabel.agent.test.integration.EmbabelMockitoIntegrationTest;
+import com.embabel.ux.form.FormSubmission;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.test.context.TestPropertySource;
 
 import java.time.DayOfWeek;
+import java.time.Instant;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
+import java.util.Set;
+import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
@@ -16,7 +26,20 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 @TestPropertySource(properties = {"embabel.agent.platform.models.openai.api-key = test"})
 class NutritionPlannerAgentIntegrationTests extends EmbabelMockitoIntegrationTest {
 
-    private static final NutritionInfo NUTRITION = new NutritionInfo(500, 30, 60, 15, 800);
+    @BeforeEach
+    void authenticate() {
+        // Either UserProfile producer may be planned (fetchUserProfileForUser or the no-arg
+        // fetchUserProfile for MCP), so provide an authenticated user as in a real request.
+        SecurityContextHolder.getContext().setAuthentication(
+                new UsernamePasswordAuthenticationToken("alice", "n/a", List.of()));
+    }
+
+    @AfterEach
+    void clearAuthentication() {
+        SecurityContextHolder.clearContext();
+    }
+
+    private static final NutritionInfo NUTRITION = new NutritionInfo(500, 30.0, 60.0, 15.0, 800);
 
     private static final Recipe PASTA = new Recipe(
             "Pasta Primavera", List.of(new Recipe.Ingredient("asparagus", "200", "g")),
@@ -27,12 +50,10 @@ class NutritionPlannerAgentIntegrationTests extends EmbabelMockitoIntegrationTes
             NUTRITION, "Boil pasta, add spinach.", 20);
 
     private static final WeeklyPlan INITIAL_PLAN = new WeeklyPlan(
-            List.of(new WeeklyPlan.DailyPlan(DayOfWeek.MONDAY,
-                    Optional.of(PASTA), Optional.of(PASTA), Optional.of(PASTA))));
+            List.of(new WeeklyPlan.DailyPlan(DayOfWeek.MONDAY, PASTA, PASTA, PASTA)));
 
     private static final WeeklyPlan REVISED_PLAN = new WeeklyPlan(
-            List.of(new WeeklyPlan.DailyPlan(DayOfWeek.MONDAY,
-                    Optional.of(REVISED_PASTA), Optional.of(REVISED_PASTA), Optional.of(REVISED_PASTA))));
+            List.of(new WeeklyPlan.DailyPlan(DayOfWeek.MONDAY, REVISED_PASTA, REVISED_PASTA, REVISED_PASTA)));
 
     private static final NutritionAuditValidationResult.NutritionAuditRecipeViolation ALLERGEN_VIOLATION =
             new NutritionAuditValidationResult.NutritionAuditRecipeViolation(
@@ -41,13 +62,13 @@ class NutritionPlannerAgentIntegrationTests extends EmbabelMockitoIntegrationTes
     @Test
     void shouldExecuteFullFlowWithOneRevisionLoop() {
         var request = new WeeklyPlanRequest(
-                List.of(new WeeklyPlanRequest.DayPlanRequest(DayOfWeek.MONDAY,
-                        List.of(WeeklyPlanRequest.MealType.BREAKFAST, WeeklyPlanRequest.MealType.LUNCH, WeeklyPlanRequest.MealType.DINNER))),
+                Map.of(DayOfWeek.MONDAY, Set.of(WeeklyPlanRequest.MealType.BREAKFAST,
+                        WeeklyPlanRequest.MealType.LUNCH, WeeklyPlanRequest.MealType.DINNER)),
                 "DE", "Low-carb meals preferred");
 
         // Step 2 – fetchSeasonalIngredients (parallel with fetchUserProfile, no LLM for profile)
         whenCreateObject(prompt -> prompt.contains("seasonal produce"), SeasonalIngredients.class)
-                .thenReturn(new SeasonalIngredients(List.of(new Recipe.Ingredient("asparagus", "500", "g"))));
+                .thenReturn(new SeasonalIngredients(List.of("asparagus")));
 
         // Step 2 – createMealPlan
         whenCreateObject(prompt -> prompt.contains("EVERY requested meal"), WeeklyPlan.class)
@@ -70,19 +91,39 @@ class NutritionPlannerAgentIntegrationTests extends EmbabelMockitoIntegrationTes
                 "user", "alice",
                 "request", request
         );
-        var result = AgentInvocation.create(agentPlatform, WeeklyPlan.class).invoke(inputs);
+
+        // Step 1 – gatherMealPreferences pauses the flow via WaitFor.formSubmission(...)
+        var process = AgentInvocation.create(agentPlatform, WeeklyPlan.class).run(inputs);
+        assertEquals(AgentProcessStatusCode.WAITING, process.getStatus(),
+                "Process should pause while waiting for the meal-preferences form");
+
+        // Simulate the user submitting the Human-in-the-Loop form and resume the process
+        var formRequest = (FormBindingRequest<?>) process.lastResult();
+        var form = formRequest.getPayload();
+        var submission = new FormSubmission(
+                form.getId(),
+                Map.of("cuisineStyle", "Mediterranean", "maxCookingTime", "30 minutes", "flavorsToEmphasize", "fresh herbs"),
+                UUID.randomUUID().toString(),
+                Instant.now());
+        formRequest.onResponse(
+                new FormResponse(UUID.randomUUID().toString(), formRequest.getId(), submission, false, Instant.now()),
+                process);
+        process.run();
+
+        var result = process.resultOfType(WeeklyPlan.class);
 
         assertNotNull(result);
         assertEquals(REVISED_PLAN, result, "Final plan should be the revised version");
 
-        // 2. fetchSeasonalIngredients — prompt includes resolved country name
+        // 2. fetchSeasonalIngredients — prompt includes resolved country name; skill tools are registered
         verifyCreateObjectMatching(
                 prompt -> prompt.contains("seasonal produce") && prompt.contains("Germany"),
-                SeasonalIngredients.class, llm -> llm.getTools().isEmpty());
+                SeasonalIngredients.class, llm -> !llm.getTools().isEmpty());
 
-        // 2. createMealPlan — initial plan, not a revision
+        // 2. createMealPlan — initial plan, not a revision, includes the user's meal preferences
         verifyCreateObjectMatching(
-                prompt -> prompt.contains("EVERY requested meal"), WeeklyPlan.class, llm -> llm.getTools().isEmpty());
+                prompt -> prompt.contains("EVERY requested meal") && prompt.contains("Mediterranean"),
+                WeeklyPlan.class, llm -> llm.getTools().isEmpty());
 
         // 3. NutritionAudit:validate (first) — dailyNutritionTotals tool must be registered via withToolObject()
         verifyCreateObjectMatching(
