@@ -6,7 +6,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
-import java.time.LocalDate;
 import java.util.Locale;
 
 @Service
@@ -25,11 +24,10 @@ class NutritionPlannerAgent {
     WeeklyPlan createNutritionPlan(String username, WeeklyPlanRequest request) {
         log.info("Starting meal plan creation for user: {}", username);
         var userProfile = userProfileProperties.getUserProfile(username);
-        var month = LocalDate.now().getMonth().toString();
         var country = Locale.of("", request.countryCode()).getDisplayCountry(Locale.ENGLISH);
-        
+
         var weeklyPlan = AgenticServices.createAgenticSystem(Agents.NutritionPlanner.class)
-                .createNutritionPlan(userProfile, request, month, country, request.additionalInstructions());
+                .createNutritionPlan(userProfile, request, country, request.additionalInstructions());
         log.info("NutritionPlannerAgent finished with agents invocations {}", agentMonitor.successfulExecutions().getFirst());
         return weeklyPlan;
     }

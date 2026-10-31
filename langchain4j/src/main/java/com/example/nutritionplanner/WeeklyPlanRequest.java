@@ -10,7 +10,7 @@ import java.util.Set;
 public record WeeklyPlanRequest(Map<DayOfWeek, Set<MealType>> meals, String countryCode, String additionalInstructions)
         implements TypedKey<WeeklyPlanRequest> {
 
-    WeeklyPlanRequest() {
+    public WeeklyPlanRequest() {
         this(new EnumMap<>(DayOfWeek.class), "DE", "");
     }
     enum MealType {

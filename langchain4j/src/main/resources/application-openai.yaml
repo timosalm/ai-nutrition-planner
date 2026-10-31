@@ -4,5 +4,6 @@ langchain4j:
     chat-model:
       model-name: gpt-6-sol
       api-key: ${OPENAI_API_KEY}
+      reasoning-effort: none
       # log-requests: true
       # log-responses: true

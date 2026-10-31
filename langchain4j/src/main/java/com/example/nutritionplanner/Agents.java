@@ -9,6 +9,8 @@ import dev.langchain4j.model.chat.ChatModel;
 import dev.langchain4j.service.SystemMessage;
 import dev.langchain4j.service.UserMessage;
 import dev.langchain4j.service.V;
+import dev.langchain4j.service.tool.ToolProvider;
+import dev.langchain4j.skills.Skills;
 import io.micrometer.core.instrument.MeterRegistry;
 
 interface Agents {
@@ -24,7 +26,6 @@ interface Agents {
         WeeklyPlan createNutritionPlan(
                 @K(UserProfile.class) UserProfile userProfile,
                 @K(WeeklyPlanRequest.class) WeeklyPlanRequest request,
-                @V("month") String month,
                 @V("country") String country,
                 @V("additionalInstructions") String additionalInstructions);
 
@@ -50,12 +51,31 @@ interface Agents {
         @UserMessage("""
             You are a nutrition expert with deep knowledge of seasonal produce.
 
-            Return a list of ingredients in English that are currently in season for the month of {{month}} in {{country}}.
+            Use the available skill to determine the current month, then return a list of ingredients in English
+            that are currently in season for that month in {{country}}.
             Focus on fish, meat, fruits, vegetables, and herbs that are at peak availability and quality.
             """)
         @Agent(description = "Fetches seasonal ingredients for a given location and time of year",
                 typedOutputKey = SeasonalIngredients.class)
-        SeasonalIngredients fetchSeasonalIngredients(@V("month") String month, @V("country") String country);
+        SeasonalIngredients fetchSeasonalIngredients(@V("country") String country);
+
+        @SystemMessageProviderSupplier
+        static String systemMessage(Object memoryId) {
+            return """
+                You have access to the following skills:
+                %s
+                When the user's request relates to one of these skills, activate it first.
+                """.formatted(skills().formatAvailableSkills());
+        }
+
+        @ToolProviderSupplier
+        static ToolProvider toolProvider() {
+            return skills().toolProvider();
+        }
+
+        private static Skills skills() {
+            return Skills.from(CustomSkillLoader.loadSkills("skills"));
+        }
     }
 
     interface WeeklyValidatedPlanCreator {
