@@ -3,17 +3,16 @@ package com.example.nutritionplanner;
 import dev.langchain4j.agentic.declarative.TypedKey;
 
 import java.time.DayOfWeek;
-import java.util.Collections;
-import java.util.List;
+import java.util.EnumMap;
+import java.util.Map;
+import java.util.Set;
 
-public record WeeklyPlanRequest(List<DayPlanRequest> days, String countryCode, String additionalInstructions) implements TypedKey<WeeklyPlanRequest> {
+public record WeeklyPlanRequest(Map<DayOfWeek, Set<MealType>> meals, String countryCode, String additionalInstructions)
+        implements TypedKey<WeeklyPlanRequest> {
 
-    public WeeklyPlanRequest() {
-        this(Collections.emptyList(), "", "");
+    WeeklyPlanRequest() {
+        this(new EnumMap<>(DayOfWeek.class), "DE", "");
     }
-
-    record DayPlanRequest(DayOfWeek day, List<MealType> meals) {}
-
     enum MealType {
         BREAKFAST,
         LUNCH,

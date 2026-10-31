@@ -4,6 +4,7 @@ import dev.langchain4j.model.chat.ChatModel;
 import org.apache.commons.lang3.reflect.FieldUtils;
 import org.springframework.stereotype.Controller;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.ModelAttribute;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.ui.Model;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -35,45 +36,17 @@ class NutritionPlannerUiController {
     @GetMapping("/")
     String form(Model model) {
         model.addAttribute("aiModel", getAiModelName());
+        model.addAttribute("weeklyPlanRequest", new WeeklyPlanRequest());
         return "index";
     }
 
     @PostMapping("/plan")
-    String createPlan(
-            @RequestParam(required = false) List<String> monday,
-            @RequestParam(required = false) List<String> tuesday,
-            @RequestParam(required = false) List<String> wednesday,
-            @RequestParam(required = false) List<String> thursday,
-            @RequestParam(required = false) List<String> friday,
-            @RequestParam(required = false) List<String> saturday,
-            @RequestParam(required = false) List<String> sunday,
-            @RequestParam(defaultValue = "DE") String countryCode,
-            @RequestParam(required = false, defaultValue = "") String additionalInstructions,
-            Model model,
-            Principal principal) {
-
-        var days = new ArrayList<WeeklyPlanRequest.DayPlanRequest>();
-        addDay(days, DayOfWeek.MONDAY, monday);
-        addDay(days, DayOfWeek.TUESDAY, tuesday);
-        addDay(days, DayOfWeek.WEDNESDAY, wednesday);
-        addDay(days, DayOfWeek.THURSDAY, thursday);
-        addDay(days, DayOfWeek.FRIDAY, friday);
-        addDay(days, DayOfWeek.SATURDAY, saturday);
-        addDay(days, DayOfWeek.SUNDAY, sunday);
-
-        var request = new WeeklyPlanRequest(days, countryCode, additionalInstructions);
+    String createPlan(@ModelAttribute WeeklyPlanRequest request, Principal principal, Model model) {
         var weeklyPlan = nutritionPlannerAgent.createNutritionPlan(principal.getName(), request);
 
         model.addAttribute("plan", weeklyPlan);
         model.addAttribute("aiModel", getAiModelName());
         return "fragments/plan :: plan";
-    }
-
-    private void addDay(List<WeeklyPlanRequest.DayPlanRequest> days, DayOfWeek day, List<String> meals) {
-        if (meals != null && !meals.isEmpty()) {
-            days.add(new WeeklyPlanRequest.DayPlanRequest(day,
-                    meals.stream().map(WeeklyPlanRequest.MealType::valueOf).toList()));
-        }
     }
 
     private String getAiModelName() {

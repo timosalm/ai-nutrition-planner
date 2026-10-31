@@ -27,7 +27,7 @@ class NutritionPlannerAgent {
         var userProfile = userProfileProperties.getUserProfile(username);
         var month = LocalDate.now().getMonth().toString();
         var country = Locale.of("", request.countryCode()).getDisplayCountry(Locale.ENGLISH);
-
+        
         var weeklyPlan = AgenticServices.createAgenticSystem(Agents.NutritionPlanner.class)
                 .createNutritionPlan(userProfile, request, month, country, request.additionalInstructions());
         log.info("NutritionPlannerAgent finished with agents invocations {}", agentMonitor.successfulExecutions().getFirst());

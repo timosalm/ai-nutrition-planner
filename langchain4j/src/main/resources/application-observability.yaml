@@ -1,7 +1,7 @@
 management:
-  tracing:
-    sampling.probability: 1.0
-    enabled: true
   otlp:
+    metrics.export.enabled: true
     metrics.export.step: 5s
-    tracing.endpoint: http://localhost:4318/v1/traces
+    tracing.export.enabled: true
+  metrics.tags.application: ${spring.application.name}
+  tracing.sampling.probability: 1.0
