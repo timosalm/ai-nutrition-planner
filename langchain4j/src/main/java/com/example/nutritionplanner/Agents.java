@@ -2,10 +2,13 @@ package com.example.nutritionplanner;
 
 import dev.langchain4j.agentic.Agent;
 import dev.langchain4j.agentic.declarative.*;
+import dev.langchain4j.agentic.internal.SuspendedResponse;
 import dev.langchain4j.agentic.observability.AgentListener;
 import dev.langchain4j.agentic.observability.AgentMonitor;
 import dev.langchain4j.agentic.observability.ComposedAgentListener;
+import dev.langchain4j.agentic.scope.ResultWithAgenticScope;
 import dev.langchain4j.model.chat.ChatModel;
+import dev.langchain4j.service.MemoryId;
 import dev.langchain4j.service.SystemMessage;
 import dev.langchain4j.service.UserMessage;
 import dev.langchain4j.service.V;
@@ -25,8 +28,9 @@ interface Agents {
 
         // Non-Declarative API: AgenticServices.sequenceBuilder(Agents.NutritionPlanner.class)
         @SequenceAgent(description = "Creates a validated weekly nutrition plan", typedOutputKey = WeeklyPlan.class,
-                subAgents = {PlanInputsFetcher.class, WeeklyValidatedPlanCreator.class})
-        WeeklyPlan createNutritionPlan(
+                subAgents = {PlanInputsFetcher.class, MealPreferencesAgent.class, WeeklyValidatedPlanCreator.class})
+        ResultWithAgenticScope<WeeklyPlan> createNutritionPlan(
+                @MemoryId String planId,
                 @V("username") String username,
                 @K(WeeklyPlanRequest.class) WeeklyPlanRequest request,
                 @V("country") String country,
@@ -103,6 +107,17 @@ interface Agents {
         }
     }
 
+    interface MealPreferencesAgent {
+
+        // Non-Declarative API: AgenticServices.humanInTheLoopBuilder()
+        @HumanInTheLoop(description = "Asks the user for meal preferences to tailor the plan",
+                outputKey = "MealPreferences")
+        static Object askForMealPreferences() {
+            // The class name as response id tells the UI which response is expected
+            return new SuspendedResponse<MealPreferences>(MealPreferences.class.getName());
+        }
+    }
+
     interface WeeklyValidatedPlanCreator {
 
         // Non-Declarative API: AgenticServices.loopBuilder()
@@ -131,6 +146,9 @@ interface Agents {
             # User profile (dietary restrictions, allergies, preferences)
             {{UserProfile}}
 
+            # Meal preferences provided by the user
+            {{MealPreferences}}
+
             # Additional instructions
             {{additionalInstructions}}
             
@@ -148,6 +166,7 @@ interface Agents {
                 @K(WeeklyPlanRequest.class) WeeklyPlanRequest request,
                 @K(SeasonalIngredients.class) SeasonalIngredients seasonalIngredients,
                 @K(UserProfile.class) UserProfile userProfile,
+                @K(MealPreferences.class) MealPreferences mealPreferences,
                 @V("additionalInstructions") String additionalInstructions,
                 @K(WeeklyPlan.class) WeeklyPlan weeklyPlan,
                 @K(NutritionAuditValidationResult.class) NutritionAuditValidationResult validationResult);
