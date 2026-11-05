@@ -13,21 +13,18 @@ class NutritionPlannerAgent {
 
     private static final Logger log = LoggerFactory.getLogger(NutritionPlannerAgent.class);
 
-    private final UserProfileProperties userProfileProperties;
     private final AgentMonitor agentMonitor;
 
-    NutritionPlannerAgent(UserProfileProperties userProfileProperties, AgentMonitor agentMonitor) {
-        this.userProfileProperties = userProfileProperties;
+    NutritionPlannerAgent(AgentMonitor agentMonitor) {
         this.agentMonitor = agentMonitor;
     }
 
     WeeklyPlan createNutritionPlan(String username, WeeklyPlanRequest request) {
         log.info("Starting meal plan creation for user: {}", username);
-        var userProfile = userProfileProperties.getUserProfile(username);
         var country = Locale.of("", request.countryCode()).getDisplayCountry(Locale.ENGLISH);
 
         var weeklyPlan = AgenticServices.createAgenticSystem(Agents.NutritionPlanner.class)
-                .createNutritionPlan(userProfile, request, country, request.additionalInstructions());
+                .createNutritionPlan(username, request, country, request.additionalInstructions());
         log.info("NutritionPlannerAgent finished with agents invocations {}", agentMonitor.successfulExecutions().getFirst());
         return weeklyPlan;
     }

@@ -13,6 +13,9 @@ import dev.langchain4j.service.tool.ToolProvider;
 import dev.langchain4j.skills.Skills;
 import io.micrometer.core.instrument.MeterRegistry;
 
+import java.util.concurrent.Executor;
+import java.util.concurrent.Executors;
+
 interface Agents {
 
     /**
@@ -22,9 +25,9 @@ interface Agents {
 
         // Non-Declarative API: AgenticServices.sequenceBuilder(Agents.NutritionPlanner.class)
         @SequenceAgent(description = "Creates a validated weekly nutrition plan", typedOutputKey = WeeklyPlan.class,
-                subAgents = {SeasonalIngredientAgent.class, WeeklyValidatedPlanCreator.class})
+                subAgents = {PlanInputsFetcher.class, WeeklyValidatedPlanCreator.class})
         WeeklyPlan createNutritionPlan(
-                @K(UserProfile.class) UserProfile userProfile,
+                @V("username") String username,
                 @K(WeeklyPlanRequest.class) WeeklyPlanRequest request,
                 @V("country") String country,
                 @V("additionalInstructions") String additionalInstructions);
@@ -38,10 +41,32 @@ interface Agents {
         static AgentListener composedAgentListener() {
             var meterRegistry = ApplicationContextProvider.getBean(MeterRegistry.class);
             var agentMonitor = ApplicationContextProvider.getBean(AgentMonitor.class);
-            ApplicationContextProvider.getBean(AgentMonitor.class);
             return new ComposedAgentListener(new AgentListeners.LoggingListener(),
                     new AgentListeners.MicrometerAgentListener(meterRegistry),
                     agentMonitor);
+        }
+    }
+
+    interface PlanInputsFetcher {
+
+        // Non-Declarative API: AgenticServices.parallelBuilder()
+        @ParallelAgent(description = "Fetches the user profile and seasonal ingredients in parallel",
+                subAgents = {UserProfileAgent.class, SeasonalIngredientAgent.class})
+        void fetchPlanInputs();
+
+        @ParallelExecutor
+        static Executor executor() {
+            return Executors.newVirtualThreadPerTaskExecutor();
+        }
+    }
+
+    // Non-AI agent
+    // Non-Declarative API: AgenticServices.nonAiAgentBuilder()
+    class UserProfileAgent {
+
+        @Agent(description = "Fetches the profile of a user", typedOutputKey = UserProfile.class)
+        public static UserProfile fetchUserProfile(@V("username") String username) {
+            return ApplicationContextProvider.getBean(UserProfileProperties.class).getUserProfile(username);
         }
     }
 
