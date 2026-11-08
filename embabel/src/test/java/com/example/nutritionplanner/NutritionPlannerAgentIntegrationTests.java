@@ -6,11 +6,7 @@ import com.embabel.agent.core.hitl.FormBindingRequest;
 import com.embabel.agent.core.hitl.FormResponse;
 import com.embabel.agent.test.integration.EmbabelMockitoIntegrationTest;
 import com.embabel.ux.form.FormSubmission;
-import org.junit.jupiter.api.AfterEach;
-import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
-import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.test.context.TestPropertySource;
 
 import java.time.DayOfWeek;
@@ -25,19 +21,6 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 
 @TestPropertySource(properties = {"embabel.agent.platform.models.openai.api-key = test"})
 class NutritionPlannerAgentIntegrationTests extends EmbabelMockitoIntegrationTest {
-
-    @BeforeEach
-    void authenticate() {
-        // Either UserProfile producer may be planned (fetchUserProfileForUser or the no-arg
-        // fetchUserProfile for MCP), so provide an authenticated user as in a real request.
-        SecurityContextHolder.getContext().setAuthentication(
-                new UsernamePasswordAuthenticationToken("alice", "n/a", List.of()));
-    }
-
-    @AfterEach
-    void clearAuthentication() {
-        SecurityContextHolder.clearContext();
-    }
 
     private static final NutritionInfo NUTRITION = new NutritionInfo(500, 30.0, 60.0, 15.0, 800);
 
@@ -87,10 +70,7 @@ class NutritionPlannerAgentIntegrationTests extends EmbabelMockitoIntegrationTes
         whenCreateObject(prompt -> prompt.contains("Revise the recipes"), WeeklyPlan.class)
                 .thenReturn(REVISED_PLAN);
 
-        var inputs = Map.of(
-                "user", "alice",
-                "request", request
-        );
+        var inputs = Map.of("username", "alice", "request", request);
 
         // Step 1 – gatherMealPreferences pauses the flow via WaitFor.formSubmission(...)
         var process = AgentInvocation.create(agentPlatform, WeeklyPlan.class).run(inputs);

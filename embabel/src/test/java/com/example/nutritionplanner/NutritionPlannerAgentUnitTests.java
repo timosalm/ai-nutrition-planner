@@ -39,8 +39,7 @@ class NutritionPlannerAgentUnitTests {
 
     @BeforeEach
     void setUp() {
-        var props = new UserProfileProperties(List.of(ALICE));
-        agent = new NutritionPlannerAgent(props);
+        agent = new NutritionPlannerAgent(new UserProfileProperties(List.of(ALICE)));
         ReflectionTestUtils.setField(agent, "skillsResource", new ClassPathResource("skills"));
     }
 
@@ -61,8 +60,8 @@ class NutritionPlannerAgentUnitTests {
         var context = FakeOperationContext.create();
         context.expectResponse(new NutritionAuditValidationResult(true, List.of(), "All checks passed"));
 
-        var audit = new NutritionPlannerAgent.NutritionAudit(PLAN, SEASONAL, ALICE, "Low-carb");
-        audit.validate(context.ai());
+        var audit = new NutritionPlannerAgent.NutritionAudit(PLAN);
+        audit.validate(ALICE, context.ai());
 
         var tools = context.getLlmInvocations().getFirst().getInteraction().getTools();
         assertEquals(1, tools.size(), "WeeklyPlan should be registered as a tool object for calorie calculation");
