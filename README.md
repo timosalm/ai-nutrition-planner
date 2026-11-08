@@ -9,31 +9,32 @@ A sample project demonstrating how to build AI agents with different Java/Spring
 The agent creates a personalized weekly meal plan:
 
 1. Fetches the user profile and seasonal ingredients in parallel
-2. Generates recipes for the requested days and meals using seasonal produce
-3. Validates the plan against the user profile (allergens, calorie limits, dietary restrictions)
-4. Revises recipes based on feedback and re-validates — looping until the plan passes or a maximum number of iterations is reached
+2. Asks the user for meal preferences to tailor the plan (human-in-the-loop)
+3. Generates recipes for the requested days and meals using seasonal produce
+4. Validates the plan against the user profile (allergens, calorie limits, dietary restrictions)
+5. Revises recipes based on feedback and re-validates — looping until the plan passes or a maximum number of iterations is reached
 
 ## Implementations
 
 | Framework | Folder | Key Pattern |
 |-----------|--------|-------------|
-| [Embabel](https://github.com/embabel/embabel-agent) | [`embabel/`](embabel/) | Declarative agent DSL with goals and actions |
-| [LangChain4j](https://docs.langchain4j.dev) | [`langchain4j/`](langchain4j/) | `langchain4j-agentic` module — `@Agent` interfaces composed with `sequenceBuilder` / `loopBuilder` |
-| [Spring AI](https://spring.io/projects/spring-ai) | [`spring-ai/`](spring-ai/) | `Advisors` and fluent `ChatClient` API |
+| [Embabel](https://github.com/embabel/embabel-agent) | [`embabel/`](embabel/) | GOAP planner over `@Agent` / `@Action` / `@State` with a goal-driven state machine |
+| [LangChain4j](https://docs.langchain4j.dev) | [`langchain4j/`](langchain4j/) | `langchain4j-agentic` declarative API — `@SequenceAgent` / `@ParallelAgent` / `@LoopAgent` composing `@Agent` sub-agents |
+| [Spring AI](https://spring.io/projects/spring-ai) | [`spring-ai/`](spring-ai/) | Fluent `ChatClient` API with custom advisors and code-orchestrated workflow |
 
 ## Agentic AI Patterns Implemented
 
-| Pattern | Embabel |                                   LangChain4j                                    | Spring AI |
-|---------|:-------:|:--------------------------------------------------------------------------------:|:---------:|
-| **Parallel Execution** — independent steps run concurrently | ✅ framework-managed |                                        ❌                                         | ✅ `Workflow.parallel()` |
-| **Validation / Reflection Loop** — iterate until output passes quality checks | ✅ `@State` machine (NutritionAudit → ReviseWeeklyPlan) |                        ✅ `@LoopAgent` + `@ExitCondition`                         | ✅ `ValidationRetryAdvisor` |
-| **Tool Use** — agent calls external functions | ✅ `withToolObject()` |                                ✅ `@ToolsSupplier`                                | ✅ `.tools()` on `ChatClient` |
-| **Tool Search** — dynamic tool discovery at runtime | ✅ `UnfoldingTool` — invoke to reveal; LLM calls a facade tool that progressively discloses its inner tools | ❌  | ✅ `ToolSearchToolCallAdvisor` — separate search step discovers tools via metadata before each call |
-| **Human-in-the-Loop** — pause workflow for user input | ❌ |                                        ❌                                         | ✅ `AskUserQuestionTool` |
-| **Agent Skills** — invoke pre-packaged executable skills | ✅ `Skills` with script engine |                                        ❌                                         | ✅ `SkillsTool` |
-| **Multi-Agent Orchestration** — specialized sub-agents collaborate | ✅ goal-driven action graph |                        ✅ `@SequenceAgent` with sub-agents                        | ✅ custom orchestration in code — no direct framework support |
+| Pattern | Embabel | LangChain4j | Spring AI |
+|---------|:-------:|:-----------:|:---------:|
+| **Parallel Execution** — independent steps run concurrently | ✅ framework-managed (GOAP planner) | ✅ `@ParallelAgent` | ✅ `Workflow.parallel()` |
+| **Validation / Reflection Loop** — iterate until output passes quality checks | ✅ `@State` machine (NutritionAudit → ReviseWeeklyPlan) | ✅ `@LoopAgent` + `@ExitCondition` | ✅ `ValidationRetryAdvisor` |
+| **Tool Use** — agent calls external functions | ✅ `withToolObject()` | ✅ `@ToolsSupplier` | ✅ `.tools()` on `ChatClient` |
+| **Tool Search** — dynamic tool discovery at runtime | ✅ `@UnfoldingTools` — a facade tool progressively discloses its inner tools on invocation | ✅ `@ToolSearchStrategySupplier` (`SimpleToolSearchStrategy`) — only the tool-search tool is sent to the LLM, which discovers matching tools by keywords | ✅ `tool-search-advisor` — a separate search step discovers tools via metadata before each call |
+| **Human-in-the-Loop** — pause workflow for user input | ✅ `WaitFor.formSubmission()` | ✅ `@HumanInTheLoop` + `SuspendedResponse` | ✅ `AskUserQuestionTool` |
+| **Agent Skills** — invoke pre-packaged executable skills | ✅ `Skills` with script execution engine | ✅ `Skills.from()` via `CustomSkillLoader` | ✅ `SkillsTool` |
+| **Multi-Agent Orchestration** — specialized sub-agents collaborate | ✅ goal-driven action graph | ✅ `@SequenceAgent` with sub-agents | ✅ custom orchestration in code — no direct framework support |
 | **Persona** — role-based system prompts per agent | ✅ first-class `Persona` object | ✅ custom implementation via `@SystemMessage` | ✅ custom implementation via `.system()` on `ChatClient` |
-| **MCP Server** — expose agent as a Model Context Protocol tool | ✅ `@Export(remote = true)` |                                        ❌                                         | ✅ `@McpTool` |
+| **MCP Server** — expose agent as a Model Context Protocol tool | ✅ `@Export(remote = true)` | ❌ | ✅ `@McpTool` |
 
 ## Prerequisites
 

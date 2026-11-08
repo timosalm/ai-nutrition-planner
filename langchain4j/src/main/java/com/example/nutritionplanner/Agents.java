@@ -13,6 +13,8 @@ import dev.langchain4j.service.SystemMessage;
 import dev.langchain4j.service.UserMessage;
 import dev.langchain4j.service.V;
 import dev.langchain4j.service.tool.ToolProvider;
+import dev.langchain4j.service.tool.search.ToolSearchStrategy;
+import dev.langchain4j.service.tool.search.simple.SimpleToolSearchStrategy;
 import dev.langchain4j.skills.Skills;
 import io.micrometer.core.instrument.MeterRegistry;
 
@@ -177,6 +179,8 @@ interface Agents {
         @SystemMessage(Personas.NUTRITION_GUARD)
         @UserMessage("""
             Validate these recipes against the user profile and flag any violations.
+            You have to use available tools to calculate total calories, protein, carbs, fat, and sodium etc.
+
 
             # Recipes
             {{WeeklyPlan}}
@@ -195,6 +199,11 @@ interface Agents {
         @ToolsSupplier
         static Object[] tools() {
             return new Object[] { new WeeklyPlan() };
+        }
+
+        @ToolSearchStrategySupplier
+        static ToolSearchStrategy toolSearchStrategy() {
+            return new SimpleToolSearchStrategy();
         }
     }
 
