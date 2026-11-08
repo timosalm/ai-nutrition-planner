@@ -3,18 +3,17 @@ package com.example.nutritionplanner;
 import dev.langchain4j.agentic.observability.AgentMonitor;
 import dev.langchain4j.model.chat.ChatModel;
 import dev.langchain4j.model.output.structured.Description;
-import org.apache.commons.lang3.reflect.FieldUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Controller;
 import org.springframework.ui.Model;
+import org.springframework.util.ReflectionUtils;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.ModelAttribute;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseBody;
-import org.springframework.util.ReflectionUtils;
 import org.thymeleaf.TemplateEngine;
 
 import java.security.Principal;
@@ -90,21 +89,12 @@ class NutritionPlannerUiController extends SseInteractionController {
     }
 
     private String getAiModelName() {
-        var chatModelProvider = chatModel.getClass().getSimpleName().replace("ChatModel", "");
-        var chatModelDefaultOptions = chatModel.defaultRequestParameters();
-        try {
-            var modelName = (String)FieldUtils.readField(chatModelDefaultOptions, "modelName", true);
-            return "%s (%s)".formatted(chatModelProvider, capitalize(modelName));
-        } catch (Exception e1) {
-            try {
-                var modelName = (String)FieldUtils.readField(chatModelDefaultOptions, "deploymentName", true);
-                return "%s (%s)".formatted(chatModelProvider, capitalize(modelName));
-            } catch (Exception e2) {
-                return chatModelProvider;
-            }
-        }
+        var provider = chatModel.getClass().getSimpleName().replace("ChatModel", "");
+        return "%s (%s)".formatted(provider, capitalize(chatModel.defaultRequestParameters().modelName()));
     }
 
+    // Derives the form fields from the record components, e.g. maxCookingTime -> "Max cooking time",
+    // using the @Description of the component as placeholder
     private static List<FormField> formFields(Class<? extends Record> type) {
         return Arrays.stream(type.getRecordComponents()).map(component -> {
             var name = component.getName();
@@ -114,5 +104,5 @@ class NutritionPlannerUiController extends SseInteractionController {
         }).toList();
     }
 
-    public record FormField(String id, String label, String placeholder) {}
+    record FormField(String id, String label, String placeholder) {}
 }

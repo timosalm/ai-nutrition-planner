@@ -7,37 +7,32 @@ import java.lang.reflect.RecordComponent;
 import java.util.Arrays;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.TimeoutException;
-import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
 
+/**
+ * Resumes an agentic system suspended by a {@code @HumanInTheLoop} agent: publishes the expected response
+ * type to the UI, blocks until the user submits answers, and completes the pending response with them.
+ */
 class HitlHandler {
 
-    private final AtomicReference<CompletableFuture<Map<String, String>>> pendingAnswers = new AtomicReference<>();
-    private final Consumer<Class<? extends Record>> formHandler;
+    private final Consumer<Class<? extends Record>> formPublisher;
+    private volatile CompletableFuture<Map<String, String>> pendingAnswers = new CompletableFuture<>();
 
-    HitlHandler(Consumer<Class<? extends Record>> formHandler) {
-        this.formHandler = formHandler;
+    HitlHandler(Consumer<Class<? extends Record>> formPublisher) {
+        this.formPublisher = formPublisher;
     }
 
     <T> ResultWithAgenticScope<T> handle(ResultWithAgenticScope<T> suspendedResult) {
         var responseId = suspendedResult.agenticScope().pendingResponseIds().iterator().next();
         var responseType = ClassUtils.resolveClassName(responseId, null).asSubclass(Record.class);
-        return suspendedResult.completePendingResponse(responseId, toRecord(responseType, awaitAnswers(responseType)));
+
+        pendingAnswers = new CompletableFuture<>();
+        formPublisher.accept(responseType);
+        return suspendedResult.completePendingResponse(responseId, toRecord(responseType, pendingAnswers.join()));
     }
 
-    private Map<String, String> awaitAnswers(Class<? extends Record> responseType) {
-        var future = new CompletableFuture<Map<String, String>>();
-        pendingAnswers.set(future);
-        formHandler.accept(responseType);
-        try {
-            return Map.copyOf(future.get(5, TimeUnit.MINUTES));
-        } catch (TimeoutException e) {
-            throw new RuntimeException("Timeout waiting for user response", e);
-        } catch (Exception e) {
-            throw new RuntimeException(e);
-        }
+    void provideAnswers(Map<String, String> answers) {
+        pendingAnswers.complete(answers);
     }
 
     private static Record toRecord(Class<? extends Record> type, Map<String, String> answers) {
@@ -49,10 +44,5 @@ class HitlHandler {
         } catch (ReflectiveOperationException e) {
             throw new IllegalStateException("Cannot bind answers to " + type.getSimpleName(), e);
         }
-    }
-
-    void provideAnswers(Map<String, String> answers) {
-        var future = pendingAnswers.getAndSet(null);
-        if (future != null) future.complete(answers);
     }
 }

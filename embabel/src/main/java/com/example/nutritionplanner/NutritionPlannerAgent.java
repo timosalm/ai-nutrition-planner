@@ -1,6 +1,10 @@
 package com.example.nutritionplanner;
 
-import com.embabel.agent.api.annotation.*;
+import com.embabel.agent.api.annotation.AchievesGoal;
+import com.embabel.agent.api.annotation.Action;
+import com.embabel.agent.api.annotation.Agent;
+import com.embabel.agent.api.annotation.Export;
+import com.embabel.agent.api.annotation.State;
 import com.embabel.agent.api.common.Ai;
 import com.embabel.agent.core.hitl.WaitFor;
 import com.embabel.agent.prompt.persona.Persona;

@@ -1,7 +1,19 @@
 package com.example.nutritionplanner;
 
 import dev.langchain4j.agentic.Agent;
-import dev.langchain4j.agentic.declarative.*;
+import dev.langchain4j.agentic.declarative.AgentListenerSupplier;
+import dev.langchain4j.agentic.declarative.ChatModelSupplier;
+import dev.langchain4j.agentic.declarative.ExitCondition;
+import dev.langchain4j.agentic.declarative.HumanInTheLoop;
+import dev.langchain4j.agentic.declarative.K;
+import dev.langchain4j.agentic.declarative.LoopAgent;
+import dev.langchain4j.agentic.declarative.ParallelAgent;
+import dev.langchain4j.agentic.declarative.ParallelExecutor;
+import dev.langchain4j.agentic.declarative.SequenceAgent;
+import dev.langchain4j.agentic.declarative.SystemMessageProviderSupplier;
+import dev.langchain4j.agentic.declarative.ToolProviderSupplier;
+import dev.langchain4j.agentic.declarative.ToolSearchStrategySupplier;
+import dev.langchain4j.agentic.declarative.ToolsSupplier;
 import dev.langchain4j.agentic.internal.SuspendedResponse;
 import dev.langchain4j.agentic.observability.AgentListener;
 import dev.langchain4j.agentic.observability.AgentMonitor;
@@ -78,6 +90,8 @@ interface Agents {
 
     interface SeasonalIngredientAgent {
 
+        Skills SKILLS = Skills.from(CustomSkillLoader.loadSkills("skills"));
+
         // Non-Declarative API: AgenticServices.agentBuilder(Agents.SeasonalIngredientAgent.class)
         @UserMessage("""
             You are a nutrition expert with deep knowledge of seasonal produce.
@@ -96,16 +110,12 @@ interface Agents {
                 You have access to the following skills:
                 %s
                 When the user's request relates to one of these skills, activate it first.
-                """.formatted(skills().formatAvailableSkills());
+                """.formatted(SKILLS.formatAvailableSkills());
         }
 
         @ToolProviderSupplier
         static ToolProvider toolProvider() {
-            return skills().toolProvider();
-        }
-
-        private static Skills skills() {
-            return Skills.from(CustomSkillLoader.loadSkills("skills"));
+            return SKILLS.toolProvider();
         }
     }
 
@@ -127,7 +137,7 @@ interface Agents {
                 maxIterations = 3)
         WeeklyPlan createValidatedWeeklyPlan();
 
-        @ExitCondition(testExitAtLoopEnd = true, description = "score greater than 0.8")
+        @ExitCondition(testExitAtLoopEnd = true, description = "all validations passed")
         static boolean exit(@K(NutritionAuditValidationResult.class) NutritionAuditValidationResult validationResult) {
             return validationResult.allPassed();
         }
@@ -154,7 +164,8 @@ interface Agents {
             # Additional instructions
             {{additionalInstructions}}
             
-            If available, don't create and revise this weekly meal plan based on the following feedback instead:
+            If a current response and feedback are provided below, revise the current response based on the feedback \
+            instead of creating a new plan.
 
             # Current response
             {{WeeklyPlan}}
@@ -188,13 +199,11 @@ interface Agents {
             # User profile
             {{UserProfile}}
             """)
-        @ExitCondition
         @Agent(description = "Validates a weekly plan against user dietary requirements",
                 typedOutputKey = NutritionAuditValidationResult.class)
         NutritionAuditValidationResult validate(
                 @K(WeeklyPlan.class) WeeklyPlan weeklyPlan,
                 @K(UserProfile.class) UserProfile userProfile);
-
 
         @ToolsSupplier
         static Object[] tools() {

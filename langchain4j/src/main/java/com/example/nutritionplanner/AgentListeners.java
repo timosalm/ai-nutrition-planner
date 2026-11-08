@@ -29,7 +29,7 @@ interface AgentListeners {
         }
 
         @Override
-        public void afterAgentInvocation(dev.langchain4j.agentic.observability.AgentResponse response) {
+        public void afterAgentInvocation(AgentResponse response) {
             log.info("Agent '{}' completed", response.agentName());
         }
     }

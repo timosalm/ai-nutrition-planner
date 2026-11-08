@@ -13,7 +13,6 @@ management:
     logging.export.enabled: false
 
 nutrition-planner:
-  max-validation-iterations: 3
   user-profiles:
     - username: alice
       dietary-restrictions:
