@@ -15,44 +15,37 @@ class ValidationRetryAdvisor<T> implements CallAdvisor {
 
     private static final Logger log = LoggerFactory.getLogger(ValidationRetryAdvisor.class);
 
-    private static final int DEFAULT_MAX_RETRIES = 3;
+    private static final int MAX_RETRIES = 3;
 
     private final Function<T, ValidationResult> validator;
     private final BeanOutputConverter<T> converter;
-    private final int maxRetries;
 
     ValidationRetryAdvisor(Class<T> responseType, Function<T, ValidationResult> validator) {
-        this(responseType, validator, DEFAULT_MAX_RETRIES);
-    }
-
-    ValidationRetryAdvisor(Class<T> responseType, Function<T, ValidationResult> validator, int maxRetries) {
         this.validator = validator;
         this.converter = new BeanOutputConverter<>(responseType);
-        this.maxRetries = maxRetries;
     }
 
     @Override
     public ChatClientResponse adviseCall(ChatClientRequest request, CallAdvisorChain chain) {
         var response = chain.nextCall(request);
-        for (int attempt = 0; attempt < maxRetries; attempt++) {
-
+        for (int attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+            // Tool calls are executed by an outer advisor (e.g. Tool Search Advisor), only validate final answers
             if (response.chatResponse() == null || response.chatResponse().hasToolCalls()) {
                 return response;
             }
 
             var entity = toEntity(response);
             var validationResult = validator.apply(entity);
-
             if (validationResult.allPassed()) {
-                log.info("ValidationRetryAdvisor: validation passed");
+                log.info("Validation passed");
                 return response;
             }
 
-            log.info("ValidationRetryAdvisor: validation failed (attempt {}/{}), revising...", attempt + 1, maxRetries);
+            log.info("Validation failed (attempt {}/{}), revising...", attempt, MAX_RETRIES);
             request = withValidationFeedback(request, entity, validationResult);
             response = chain.copy(this).nextCall(request);
         }
-        log.warn("ValidationRetryAdvisor: max retries ({}) reached, returning last response", maxRetries);
+        log.warn("Max retries ({}) reached, returning last response", MAX_RETRIES);
         return response;
     }
 

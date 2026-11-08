@@ -16,6 +16,7 @@ import org.springframework.stereotype.Service;
 import java.util.Locale;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
 
 @Service
 class NutritionPlannerAgent {
@@ -28,42 +29,29 @@ class NutritionPlannerAgent {
     @Value("classpath:skills")
     private Resource skillsResource;
 
-    public NutritionPlannerAgent(UserProfileProperties userProfileProperties, ChatClient.Builder chatClientBuilder) {
+    NutritionPlannerAgent(UserProfileProperties userProfileProperties, ChatClient.Builder chatClientBuilder) {
         this.userProfileProperties = userProfileProperties;
         this.chatClient = chatClientBuilder.build();
     }
 
     @McpTool(description = "Provides a nutrition plan for the week")
     WeeklyPlan createNutritionPlan(WeeklyPlanRequest request) {
-        var auth = SecurityContextHolder.getContext().getAuthentication();
-        return createNutritionPlan(auth.getName(), request, _ -> Map.of());
+        var username = SecurityContextHolder.getContext().getAuthentication().getName();
+        return createNutritionPlan(username, request, _ -> Map.of()); // No human in the loop for MCP clients
     }
 
-    WeeklyPlan createNutritionPlan(String name, WeeklyPlanRequest request, AskUserQuestionTool.QuestionHandler questionHandler) {
-        // Phase 1: Parallel — fetch user profile and seasonal ingredients
-        var result = Workflow.parallel(() -> fetchUserProfileForUser(name), () -> fetchSeasonalIngredients(request));
-        var userProfile = (UserProfile) result.getFirst();
-        var seasonalIngredients = (SeasonalIngredients) result.getLast();
-        log.info("Phase 1 complete — profile: {}, seasonal items: {}", userProfile.name(), seasonalIngredients.ingredients());
+    WeeklyPlan createNutritionPlan(String username, WeeklyPlanRequest request, AskUserQuestionTool.QuestionHandler questionHandler) {
+        // Independent steps run in parallel
+        var userProfile = CompletableFuture.supplyAsync(() -> userProfileProperties.getUserProfile(username));
+        var seasonalIngredients = CompletableFuture.supplyAsync(() -> fetchSeasonalIngredients(request));
 
-        // Phase 2: Create weekly plan with validation loop
-        var weeklyPlan = createWeeklyPlan(request, seasonalIngredients, userProfile, questionHandler);
-        log.info("Phase 2 complete — weekly plan created with {} meals", weeklyPlan.totalMealCount());
-        return weeklyPlan;
+        return createWeeklyPlan(request, seasonalIngredients.join(), userProfile.join(), questionHandler);
     }
 
-    private UserProfile fetchUserProfileForUser(String user) {
-        log.info("NutritionPlannerAgent:fetchUserProfile action called");
-        var userProfile = userProfileProperties.getUserProfile(user);
-        log.info("NutritionPlannerAgent:fetchUserProfile action ended with {}", userProfile);
-        return userProfile;
-    }
+    private SeasonalIngredients fetchSeasonalIngredients(WeeklyPlanRequest request) {
+        var country = Locale.of("", request.countryCode()).getDisplayCountry(Locale.ENGLISH);
+        var skillsTool = SkillsTool.builder().addSkillsResource(skillsResource).build();
 
-    private SeasonalIngredients fetchSeasonalIngredients(WeeklyPlanRequest weeklyPlanRequest) {
-        log.info("NutritionPlannerAgent:fetchSeasonalIngredients action called");
-        var country = Locale.of("", weeklyPlanRequest.countryCode()).getDisplayCountry(Locale.ENGLISH);
-
-        var skillTool = SkillsTool.builder().addSkillsResource(skillsResource).build();
         var seasonalIngredients = chatClient.prompt()
                 .user(u -> u.text("""
                         You are a nutrition expert with deep knowledge of seasonal produce.
@@ -71,27 +59,22 @@ class NutritionPlannerAgent {
                         Use the available skill as part for the SkillsTool to determine the current month, then return a list of ingredients \
                         in English that are currently in season for that month in {country}.
                         Focus on fish, meat, fruits, vegetables, and herbs that are at peak availability and quality.
-                        """).param("country",country)
-                )
-                .tools(skillTool, ShellTools.builder().build()) // ShellTools is required for SkillsTool, FileSystemTools may be also necessary for other examples
+                        """).param("country", country))
+                .tools(skillsTool, ShellTools.builder().build()) // ShellTools is required by SkillsTool to execute skill scripts
                 .advisors(a -> a.param(ChatMemory.CONVERSATION_ID, UUID.randomUUID().toString())) // Required for Tool Search Advisor
                 .call()
                 .entity(SeasonalIngredients.class);
-        log.info("NutritionPlannerAgent:fetchSeasonalIngredients action ended with {}", seasonalIngredients);
+        log.info("Seasonal ingredients: {}", seasonalIngredients);
         return seasonalIngredients;
     }
 
-    private WeeklyPlan createWeeklyPlan(WeeklyPlanRequest weeklyPlanRequest, SeasonalIngredients seasonalIngredients,
+    private WeeklyPlan createWeeklyPlan(WeeklyPlanRequest request, SeasonalIngredients seasonalIngredients,
                                         UserProfile userProfile, AskUserQuestionTool.QuestionHandler questionHandler) {
-        log.info("NutritionPlannerAgent:createWeeklyPlan action called");
-
-        var validationRetryAdvisor = new ValidationRetryAdvisor<>(WeeklyPlan.class,
-                plan -> this.validateWeeklyPlan(plan, userProfile));
-
+        var validationRetryAdvisor = new ValidationRetryAdvisor<>(WeeklyPlan.class, plan -> validateWeeklyPlan(plan, userProfile));
         var askUserQuestionTool = AskUserQuestionTool.builder().questionHandler(questionHandler).build();
 
         var weeklyPlan = chatClient.prompt()
-                .system(Personas.RECIPE_CURATOR)
+                .system(RECIPE_CURATOR)
                 .user(u -> u.text("""
                         # User requested meals and days
                         {mealsAndDays}
@@ -101,68 +84,62 @@ class NutritionPlannerAgent {
 
                         # Additional instructions
                         {instructions}
-                        
-                        Use a tool to ask the user for additional information to refine the recipes if there is no current response included! 
+
+                        Use a tool to ask the user for additional information to refine the recipes if there is no current response included!
                         Never ask the user about which meals to include for a weekday, dietary restrictions, allergies, or nutritional requirements.
-                        """).param("mealsAndDays", weeklyPlanRequest.meals()).param("ingredients", seasonalIngredients)
-                        .param("instructions", weeklyPlanRequest.additionalInstructions())
-                )
+                        """).param("mealsAndDays", request.meals())
+                        .param("ingredients", seasonalIngredients)
+                        .param("instructions", request.additionalInstructions()))
                 .advisors(validationRetryAdvisor)
                 .advisors(a -> a.param(ChatMemory.CONVERSATION_ID, UUID.randomUUID().toString())) // Required for Tool Search Advisor
                 .tools(askUserQuestionTool)
                 .call()
                 .entity(WeeklyPlan.class);
-        log.info("NutritionPlannerAgent:createWeeklyPlan action ended with {}", weeklyPlan);
+        log.info("Weekly plan: {}", weeklyPlan);
         return weeklyPlan;
     }
 
     private NutritionAuditValidationResult validateWeeklyPlan(WeeklyPlan weeklyPlan, UserProfile userProfile) {
-        log.info("NutritionPlannerAgent:validateWeeklyPlan action called");
         var validationResult = chatClient.prompt()
-                .system(Personas.NUTRITION_GUARD)
+                .system(NUTRITION_GUARD)
                 .user(u -> u.text("""
                         You have to use available tools to calculate total calories, protein, carbs, fat, and sodium etc.
-                        
+
                         # Validate these recipes:
                         {weeklyPlan}
 
                         # Against this user profile:
                         {userProfile}
-                        """).param("weeklyPlan", weeklyPlan).param("userProfile", userProfile)
-                )
+                        """).param("weeklyPlan", weeklyPlan).param("userProfile", userProfile))
                 .advisors(a -> a.param(ChatMemory.CONVERSATION_ID, UUID.randomUUID().toString())) // Required for Tool Search Advisor
                 .tools(weeklyPlan)
                 .call()
                 .entity(NutritionAuditValidationResult.class);
-
-        log.info("NutritionPlannerAgent:validateWeeklyPlan action ended with {}", validationResult);
+        log.info("Validation result: {}", validationResult);
         return validationResult;
     }
 
-    static class Personas {
-        static String RECIPE_CURATOR = """
-                You are a Recipe Curator.
-                Your persona: A culinary expert specializing in weekly meal planning.
-                Your voice: Creative yet practical. You craft balanced, appealing recipes using seasonal ingredients
-                and always provide accurate nutrition information for each dish.
-                Your objective is to draft recipes in English based on the user requested meals and days.
-                Use seasonal ingredients as much as possible and provide nutrition information for each recipe.
-                """;
+    private static final String RECIPE_CURATOR = """
+            You are a Recipe Curator.
+            Your persona: A culinary expert specializing in weekly meal planning.
+            Your voice: Creative yet practical. You craft balanced, appealing recipes using seasonal ingredients
+            and always provide accurate nutrition information for each dish.
+            Your objective is to draft recipes in English based on the user requested meals and days.
+            Use seasonal ingredients as much as possible and provide nutrition information for each recipe.
+            """;
 
-        static String NUTRITION_GUARD = """
-                You are a Nutrition Guard.
-                Your persona: A strict dietary compliance validator
-                specialized in ensuring meal plans meet user health requirements and dietary restrictions.
-                Your voice: Thorough, precise, and uncompromising. You apply dietary rules consistently and
-                flag every violation without exception. Be concise and factual in your assessments.
-                Your objective is to validate a list of recipes against a user profile and flag any violations.
-                Check each recipe for:
-                1. NUTRITION_INFO: Nutrition information is available for each recipe
-                2. CALORIE_OVERFLOW: calories exceed daily calorie target
-                3. ALLERGEN_PRESENT: recipe contains an ingredient matching user's allergies
-                4. RESTRICTION_VIOLATION: recipe violates dietary restrictions (e.g., meat for vegetarian)
-                5. DISLIKED_INGREDIENTS_PRESENT: recipe contains disliked ingredients
-                """;
-    }
-
+    private static final String NUTRITION_GUARD = """
+            You are a Nutrition Guard.
+            Your persona: A strict dietary compliance validator
+            specialized in ensuring meal plans meet user health requirements and dietary restrictions.
+            Your voice: Thorough, precise, and uncompromising. You apply dietary rules consistently and
+            flag every violation without exception. Be concise and factual in your assessments.
+            Your objective is to validate a list of recipes against a user profile and flag any violations.
+            Check each recipe for:
+            1. NUTRITION_INFO: Nutrition information is available for each recipe
+            2. CALORIE_OVERFLOW: calories exceed daily calorie target
+            3. ALLERGEN_PRESENT: recipe contains an ingredient matching user's allergies
+            4. RESTRICTION_VIOLATION: recipe violates dietary restrictions (e.g., meat for vegetarian)
+            5. DISLIKED_INGREDIENTS_PRESENT: recipe contains disliked ingredients
+            """;
 }

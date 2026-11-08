@@ -1,6 +1,5 @@
 package com.example.nutritionplanner;
 
-import org.apache.commons.lang3.reflect.FieldUtils;
 import org.springframework.ai.chat.model.ChatModel;
 import org.springframework.stereotype.Controller;
 import org.springframework.ui.Model;
@@ -12,7 +11,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
-import static org.apache.commons.lang3.StringUtils.capitalize;
+import static org.springframework.util.StringUtils.capitalize;
 
 @Controller
 class NutritionPlannerUiController extends SseInteractionController {
@@ -67,19 +66,8 @@ class NutritionPlannerUiController extends SseInteractionController {
     }
 
     private String getAiModelName() {
-        var chatModelDefaultOptions = chatModel.getOptions();
         var provider = chatModel.getClass().getSimpleName().replace("ChatModel", "");
-        try {
-            var name = (String) FieldUtils.readField(chatModelDefaultOptions, "model", true);
-            return "%s (%s)".formatted(provider, capitalize(name));
-        } catch (Exception e) {
-            try {
-                var name = (String) FieldUtils.readField(chatModelDefaultOptions, "deploymentName", true);
-                return "%s (%s)".formatted(provider, capitalize(name));
-            } catch (Exception e2) {
-                return provider;
-            }
-        }
+        return "%s (%s)".formatted(provider, capitalize(chatModel.getOptions().getModel()));
     }
 
     record AnswersForm(List<AskUserQuestionHandler.Answer> answers) {}
