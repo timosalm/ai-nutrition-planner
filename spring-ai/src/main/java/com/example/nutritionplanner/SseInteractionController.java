@@ -14,10 +14,13 @@ import java.io.IOException;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.CompletionException;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Consumer;
 
+/**
+ * Streams rendered Thymeleaf fragments to the browser via Server-Sent Events while an interaction
+ * (e.g. the creation of a weekly plan) runs in the background.
+ */
 abstract class SseInteractionController {
 
     private static final Logger log = LoggerFactory.getLogger(SseInteractionController.class);
@@ -30,68 +33,44 @@ abstract class SseInteractionController {
     }
 
     @GetMapping(path = "/interactions/{interactionId}/events", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
-    public SseEmitter interactionEvents(@PathVariable String interactionId) {
+    SseEmitter interactionEvents(@PathVariable String interactionId) {
         return emitters.get(interactionId);
     }
 
-    String eventStream(Model model, Consumer<String> publisher) {
+    String eventStream(Model model, Consumer<String> interaction) {
         var interactionId = UUID.randomUUID().toString();
-        createEmitter(interactionId);
+        var emitter = new SseEmitter(Long.MAX_VALUE);
+        emitters.put(interactionId, emitter);
+        emitter.onCompletion(() -> emitters.remove(interactionId));
+        emitter.onTimeout(() -> emitters.remove(interactionId));
 
-        CompletableFuture.runAsync(() -> publisher.accept(interactionId))
-                .exceptionally(throwable -> {
-                    failInteraction(interactionId, throwable);
-                    return null;
-                });
+        CompletableFuture.runAsync(() -> interaction.accept(interactionId)).exceptionally(e -> {
+            log.error("Interaction {} failed", interactionId, e.getCause());
+            sendEvent(interactionId, "fragments/error", Map.of("message", e.getCause().toString()));
+            completeInteraction(interactionId);
+            return null;
+        });
 
         model.addAttribute("interactionId", interactionId);
         return "fragments/events :: events";
     }
 
-    private void createEmitter(String interactionId) {
-        var emitter = new SseEmitter(Long.MAX_VALUE);
-        emitters.put(interactionId, emitter);
-        emitter.onCompletion(() -> emitters.remove(interactionId));
-        emitter.onTimeout(() -> emitters.remove(interactionId));
-    }
-
-    protected void sendEvent(String interactionId, String template, Map<String, Object> data) {
+    void sendEvent(String interactionId, String template, Map<String, Object> data) {
         var emitter = emitters.get(interactionId);
         if (emitter == null) return;
 
         var context = new Context();
         context.setVariables(data);
         context.setVariable("interactionId", interactionId);
-        var content = templateEngine.process(template, context);
         try {
-            emitter.send(SseEmitter.event().name("content-update").data(content));
+            emitter.send(SseEmitter.event().name("content-update").data(templateEngine.process(template, context)));
         } catch (IOException e) {
             emitter.completeWithError(e);
         }
     }
 
-    /**
-     * Reports a failure of the asynchronous work behind an interaction to the browser and closes the
-     * event stream. Without this the exception would be swallowed by the {@link CompletableFuture} and
-     * the stream would stay open forever, leaving the UI waiting for a response that never arrives.
-     */
-    private void failInteraction(String interactionId, Throwable throwable) {
-        var cause = (throwable instanceof CompletionException && throwable.getCause() != null)
-                ? throwable.getCause() : throwable;
-        log.error("Interaction {} failed", interactionId, cause);
-        sendEvent(interactionId, "fragments/error", Map.of("message", errorMessage(cause)));
-        completeInteraction(interactionId);
-    }
-
-    private String errorMessage(Throwable cause) {
-        return cause.getMessage() != null ? "%s: %s".formatted(cause.getClass().getSimpleName(), cause.getMessage())
-                : cause.getClass().getSimpleName();
-    }
-
-    protected void completeInteraction(String interactionId) {
+    void completeInteraction(String interactionId) {
         var emitter = emitters.get(interactionId);
-        if (emitter != null) {
-            emitter.complete();
-        }
+        if (emitter != null) emitter.complete();
     }
 }
