@@ -39,94 +39,76 @@ The agent creates a personalized weekly meal plan:
 ## Prerequisites
 
 - **Java 25**
-- **Maven** (Maven wrapper included)
-- **Docker Desktop** (for Grafana observability stack and Ollama)
-- An LLM provider: **Azure OpenAI**, **OpenAI**, or **Ollama** (local)
+- **Maven** (wrapper included in each module)
+- An **OpenAI API key**
+- **Docker Desktop** (optional, for the Grafana observability stack)
 
 ## Setup
 
 ### Codespaces (recommended)
 
-Open this repo in a GitHub Codespace. The dev container installs Java 25, Maven, Docker, and Ollama automatically. After the container starts, Ollama is ready at `localhost:11434` with the `qwen2.5` model pre-pulled.
+Open this repo in a GitHub Codespace. The dev container installs Java 25, Maven, and Docker automatically.
+Add your OpenAI API key as a Codespaces secret named `OPENAI_API_KEY` (or export it in the terminal).
 
 ### LLM Providers
 
-**Ollama** (local, no API key required):
-
-```bash
-docker compose --profile ollama up -d
-```
-
-This starts Ollama and automatically pulls `qwen2.5`. 
-
-**Azure OpenAI**:
-
-```bash
-export AZURE_OPENAI_ENDPOINT=https://your-resource.openai.azure.com/
-export AZURE_OPENAI_API_KEY=your-api-key
-export AZURE_OPENAI_DEPLOYMENT_NAME=gpt-4o
-```
-
-**OpenAI**:
+**OpenAI** (default `openai` profile):
 
 ```bash
 export OPENAI_API_KEY=sk-...
 ```
 
+**Azure OpenAI** (`azure` profile):
+
+```bash
+export SPRING_PROFILES_ACTIVE=azure
+export AZURE_OPENAI_BASEURL=https://your-resource.openai.azure.com
+export AZURE_OPENAI_API_KEY=your-api-key
+```
+
+The model name configured in each module's `application-azure.yaml` must match the name of a deployment in your Azure OpenAI resource.
+
+Alternatively copy [`.env.example`](.env.example) to `.env`, fill in the values and `source` it.
+
 ## Run
 
-Change into the implementation directory, set the Spring profile related to an LLM provider and start the app:
+Change into the implementation directory and start the app:
 
 ```bash
 cd langchain4j   # or embabel, spring-ai
-export SPRING_PROFILES_ACTIVE=ollama # or openai, azure
 ./mvnw spring-boot:run
 ```
 
-The app starts on port `8080`. Basic auth: `alice` / `123456`. UI at [http://localhost:8080](http://localhost:8080), REST API at `http://localhost:8080/api/nutrition-plan`.
+The app starts on port `8080` with the `openai` profile active unless `SPRING_PROFILES_ACTIVE` says otherwise. Log in as `alice` / `123456`, pick the days and meals for your plan, and answer the follow-up questions the agent asks (human-in-the-loop) at [http://localhost:8080](http://localhost:8080).
 
+### MCP Server
 
-### Deploy to Azure
-The project supports [Azure Developer CLI](https://learn.microsoft.com/azure/developer/azure-developer-cli/) for one-command deployment to Azure Container Apps:
+The Spring AI and Embabel implementations additionally expose the agent as an MCP tool (`createNutritionPlan`) via Streamable HTTP at `http://localhost:8080/mcp`, protected by HTTP Basic auth (`alice` / `123456`). When called through MCP, the agent skips the human-in-the-loop step.
+
+## Tests
+
+Each module can be tested on its own; AI model responses are mocked, no API key is required:
 
 ```bash
-azd auth login
-azd up
+cd spring-ai     # or embabel
+./mvnw test
 ```
-
-This provisions a Container Apps Environment, Azure Container Registry, Azure OpenAI (gpt-4o), and one Container App per framework. See [`infra/`](infra/) for Bicep templates and [`azure.yaml`](azure.yaml) for the service manifest.
 
 ## Observability
 
 A Grafana + OTLP stack (Loki, Tempo, Mimir) is included via Docker Compose:
+
 ```bash
-docker compose --profile observability up -d
+docker compose up -d
 ```
 
 - **Grafana**: [http://localhost:3000](http://localhost:3000) (admin/admin)
 - **OTLP collector**: `localhost:4318` (HTTP) / `localhost:4317` (gRPC)
 
-To enable tracing and metrics export from any module, activate the `observability` profile 
-in addition to the profile for the LLM provider of choice:
+To export traces and metrics from any module, activate the `observability` profile in addition to the LLM provider profile:
 
 ```bash
-SPRING_PROFILES_ACTIVE=ollama,observability mvn spring-boot:run
+SPRING_PROFILES_ACTIVE=openai,observability ./mvnw spring-boot:run
 ```
+
 The dashboard shows agent invocation rates, execution durations (p95), active agents, HTTP endpoint latency, JVM metrics, and distributed traces.
-
-## Example Request
-
-```bash
-curl -s -X POST http://localhost:8080/api/nutrition-plan \
-  -u alice:123456 \
-  -H "Content-Type: application/json" \
-  -d '{
-    "days": [
-      { "day": "MONDAY",    "meals": ["BREAKFAST", "LUNCH", "DINNER"] },
-      { "day": "TUESDAY",   "meals": ["BREAKFAST", "LUNCH", "DINNER"] },
-      { "day": "WEDNESDAY", "meals": ["LUNCH", "DINNER"] }
-    ],
-    "countryCode": "DE",
-    "additionalInstructions": "Prefer quick recipes with less than 30 minutes prep time."
-  }' | jq .
-```
