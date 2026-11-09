@@ -28,7 +28,9 @@ import dev.langchain4j.service.tool.ToolProvider;
 import dev.langchain4j.service.tool.search.ToolSearchStrategy;
 import dev.langchain4j.service.tool.search.simple.SimpleToolSearchStrategy;
 import dev.langchain4j.skills.Skills;
+import io.micrometer.context.ContextExecutorService;
 import io.micrometer.core.instrument.MeterRegistry;
+import io.micrometer.observation.ObservationRegistry;
 
 import java.util.concurrent.Executor;
 import java.util.concurrent.Executors;
@@ -58,9 +60,10 @@ interface Agents {
         @AgentListenerSupplier
         static AgentListener composedAgentListener() {
             var meterRegistry = ApplicationContextProvider.getBean(MeterRegistry.class);
+            var observationRegistry = ApplicationContextProvider.getBean(ObservationRegistry.class);
             var agentMonitor = ApplicationContextProvider.getBean(AgentMonitor.class);
             return new ComposedAgentListener(new AgentListeners.LoggingListener(),
-                    new AgentListeners.MicrometerAgentListener(meterRegistry),
+                    new AgentListeners.MicrometerAgentListener(meterRegistry, observationRegistry),
                     agentMonitor);
         }
     }
@@ -74,7 +77,8 @@ interface Agents {
 
         @ParallelExecutor
         static Executor executor() {
-            return Executors.newVirtualThreadPerTaskExecutor();
+            // Propagates the current observation, so that the spans of the parallel agents become part of the trace
+            return ContextExecutorService.wrap(Executors.newVirtualThreadPerTaskExecutor());
         }
     }
 

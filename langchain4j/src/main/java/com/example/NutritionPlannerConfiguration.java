@@ -2,6 +2,10 @@ package com.example;
 
 import dev.langchain4j.agentic.observability.AgentMonitor;
 import dev.langchain4j.agentic.observability.AgentRequest;
+import dev.langchain4j.model.chat.listener.ChatModelListener;
+import dev.langchain4j.observation.listener.ObservationChatModelListener;
+import io.micrometer.core.instrument.MeterRegistry;
+import io.micrometer.observation.ObservationRegistry;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.security.config.Customizer;
@@ -21,6 +25,12 @@ class NutritionPlannerConfiguration {
                         .anyRequest().authenticated())
                 .formLogin(form -> form.loginPage("/login").permitAll())
                 .httpBasic(Customizer.withDefaults()).build();
+    }
+
+    // Picked up by the auto-configured ChatModel to record an observation (span and metrics) per LLM call
+    @Bean
+    ChatModelListener observationChatModelListener(ObservationRegistry observationRegistry, MeterRegistry meterRegistry) {
+        return new ObservationChatModelListener(observationRegistry, meterRegistry);
     }
 
     // Resuming after a human-in-the-loop suspension invokes the root agent again, which the AgentMonitor

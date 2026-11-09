@@ -9,6 +9,7 @@ import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.memory.ChatMemory;
 import org.springframework.ai.mcp.annotation.McpTool;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.core.task.AsyncTaskExecutor;
 import org.springframework.core.io.Resource;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
@@ -25,13 +26,15 @@ class NutritionPlannerAgent {
 
     private final UserProfileProperties userProfileProperties;
     private final ChatClient chatClient;
+    private final AsyncTaskExecutor taskExecutor;
 
     @Value("classpath:skills")
     private Resource skillsResource;
 
-    NutritionPlannerAgent(UserProfileProperties userProfileProperties, ChatClient.Builder chatClientBuilder) {
+    NutritionPlannerAgent(UserProfileProperties userProfileProperties, ChatClient.Builder chatClientBuilder, AsyncTaskExecutor taskExecutor) {
         this.userProfileProperties = userProfileProperties;
         this.chatClient = chatClientBuilder.build();
+        this.taskExecutor = taskExecutor;
     }
 
     @McpTool(description = "Provides a nutrition plan for the week")
@@ -42,8 +45,8 @@ class NutritionPlannerAgent {
 
     WeeklyPlan createNutritionPlan(String username, WeeklyPlanRequest request, AskUserQuestionTool.QuestionHandler questionHandler) {
         // Independent steps run in parallel
-        var userProfile = CompletableFuture.supplyAsync(() -> userProfileProperties.getUserProfile(username));
-        var seasonalIngredients = CompletableFuture.supplyAsync(() -> fetchSeasonalIngredients(request));
+        var userProfile = CompletableFuture.supplyAsync(() -> userProfileProperties.getUserProfile(username), taskExecutor);
+        var seasonalIngredients = CompletableFuture.supplyAsync(() -> fetchSeasonalIngredients(request), taskExecutor);
 
         return createWeeklyPlan(request, seasonalIngredients.join(), userProfile.join(), questionHandler);
     }

@@ -1,5 +1,5 @@
 spring:
-  application.name: nutrition-planner
+  application.name: embabel-nutrition-planner
   profiles.active: openai
   security.user:
       password: 123456
@@ -8,20 +8,20 @@ spring:
     chat.client.observations.log-completion: true
     tools.observations.include-content: true
     mcp.server.protocol: STREAMABLE
+  threads.virtual.enabled: true
+  task.execution.propagate-context: true
+  # Use Spring Boot's OpenTelemetry starter OpenTelemetry SDK auto-configuration
+  autoconfigure.exclude: com.embabel.agent.autoconfigure.observability.OpenTelemetrySdkAutoConfiguration
 
-embabel:
-  agent.platform.process-type: CONCURRENT
-  agent.platform.llm-operations.prompts.default-timeout: 180s
-  observability:
-    service-name: ${spring.application.name}
-    trace-http-details: true
+embabel.agent.platform:
+  process-type: CONCURRENT
+  llm-operations.prompts.default-timeout: 180s
 
 management:
   endpoints.web.exposure.include: "*"
-  otlp:
-    metrics.export.enabled: false
-    tracing.export.enabled: false
-    logging.export.enabled: false
+  otlp.metrics.export.enabled: false
+  tracing.export.otlp.enabled: false
+  logging.export.otlp.enabled: false
 
 nutrition-planner:
   user-profiles:

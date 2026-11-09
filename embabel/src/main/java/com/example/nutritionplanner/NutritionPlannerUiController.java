@@ -6,6 +6,7 @@ import com.embabel.agent.core.AgentProcessStatusCode;
 import com.embabel.agent.core.hitl.FormBindingRequest;
 import com.embabel.common.ai.model.ModelProvider;
 import com.embabel.common.ai.model.ModelSelectionCriteria;
+import org.springframework.core.task.AsyncTaskExecutor;
 import org.springframework.stereotype.Controller;
 import org.springframework.ui.Model;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -29,8 +30,9 @@ class NutritionPlannerUiController extends SseInteractionController {
     private final ModelProvider modelProvider;
     private final ConcurrentHashMap<String, HitlHandler> hitlHandlers = new ConcurrentHashMap<>();
 
-    NutritionPlannerUiController(AgentPlatform agentPlatform, ModelProvider modelProvider, TemplateEngine templateEngine) {
-        super(templateEngine);
+    NutritionPlannerUiController(AgentPlatform agentPlatform, ModelProvider modelProvider,
+                                 TemplateEngine templateEngine, AsyncTaskExecutor taskExecutor) {
+        super(templateEngine, taskExecutor);
         this.agentPlatform = agentPlatform;
         this.modelProvider = modelProvider;
     }

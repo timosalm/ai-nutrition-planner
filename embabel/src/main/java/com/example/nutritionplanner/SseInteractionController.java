@@ -2,6 +2,7 @@ package com.example.nutritionplanner;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.core.task.AsyncTaskExecutor;
 import org.springframework.http.MediaType;
 import org.springframework.ui.Model;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -27,9 +28,11 @@ abstract class SseInteractionController {
 
     private final ConcurrentHashMap<String, SseEmitter> emitters = new ConcurrentHashMap<>();
     private final TemplateEngine templateEngine;
+    private final AsyncTaskExecutor taskExecutor;
 
-    SseInteractionController(TemplateEngine templateEngine) {
+    SseInteractionController(TemplateEngine templateEngine, AsyncTaskExecutor taskExecutor) {
         this.templateEngine = templateEngine;
+        this.taskExecutor = taskExecutor;
     }
 
     @GetMapping(path = "/interactions/{interactionId}/events", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
@@ -44,7 +47,7 @@ abstract class SseInteractionController {
         emitter.onCompletion(() -> emitters.remove(interactionId));
         emitter.onTimeout(() -> emitters.remove(interactionId));
 
-        CompletableFuture.runAsync(() -> interaction.accept(interactionId)).exceptionally(e -> {
+        CompletableFuture.runAsync(() -> interaction.accept(interactionId), taskExecutor).exceptionally(e -> {
             log.error("Interaction {} failed", interactionId, e.getCause());
             sendEvent(interactionId, "fragments/error", Map.of("message", e.getCause().toString()));
             completeInteraction(interactionId);

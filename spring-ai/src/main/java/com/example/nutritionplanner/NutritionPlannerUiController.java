@@ -1,6 +1,7 @@
 package com.example.nutritionplanner;
 
 import org.springframework.ai.chat.model.ChatModel;
+import org.springframework.core.task.AsyncTaskExecutor;
 import org.springframework.stereotype.Controller;
 import org.springframework.ui.Model;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -24,8 +25,9 @@ class NutritionPlannerUiController extends SseInteractionController {
     private final NutritionPlannerAgent nutritionPlannerAgent;
     private final ConcurrentHashMap<String, AskUserQuestionHandler> questionHandlers = new ConcurrentHashMap<>();
 
-    NutritionPlannerUiController(ChatModel chatModel, NutritionPlannerAgent nutritionPlannerAgent, TemplateEngine templateEngine) {
-        super(templateEngine);
+    NutritionPlannerUiController(ChatModel chatModel, NutritionPlannerAgent nutritionPlannerAgent,
+                                 TemplateEngine templateEngine, AsyncTaskExecutor taskExecutor) {
+        super(templateEngine, taskExecutor);
         this.chatModel = chatModel;
         this.nutritionPlannerAgent = nutritionPlannerAgent;
     }

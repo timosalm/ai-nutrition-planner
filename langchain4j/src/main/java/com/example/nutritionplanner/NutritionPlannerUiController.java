@@ -5,6 +5,7 @@ import dev.langchain4j.model.chat.ChatModel;
 import dev.langchain4j.model.output.structured.Description;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.core.task.AsyncTaskExecutor;
 import org.springframework.stereotype.Controller;
 import org.springframework.ui.Model;
 import org.springframework.util.ReflectionUtils;
@@ -34,9 +35,9 @@ class NutritionPlannerUiController extends SseInteractionController {
     private final AgentMonitor agentMonitor;
     private final ConcurrentHashMap<String, HitlHandler> hitlHandlers = new ConcurrentHashMap<>();
 
-    NutritionPlannerUiController(ChatModel chatModel, NutritionPlannerAgent nutritionPlannerAgent,
-                                 AgentMonitor agentMonitor, TemplateEngine templateEngine) {
-        super(templateEngine);
+    NutritionPlannerUiController(ChatModel chatModel, NutritionPlannerAgent nutritionPlannerAgent, AgentMonitor agentMonitor,
+                                 TemplateEngine templateEngine, AsyncTaskExecutor taskExecutor) {
+        super(templateEngine, taskExecutor);
         this.chatModel = chatModel;
         this.nutritionPlannerAgent = nutritionPlannerAgent;
         this.agentMonitor = agentMonitor;

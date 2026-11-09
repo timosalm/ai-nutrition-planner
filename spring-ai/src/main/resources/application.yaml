@@ -1,5 +1,5 @@
 spring:
-  application.name: nutrition-planner
+  application.name: spring-ai-nutrition-planner
   profiles.active: openai
   security.user:
       password: 123456
@@ -14,13 +14,14 @@ spring:
       enabled: false
       tool-index-type: lucene
       lucene.min-score-threshold: 0.4
+  threads.virtual.enabled: true
+  task.execution.propagate-context: true
 
 management:
   endpoints.web.exposure.include: "*"
-  otlp:
-    metrics.export.enabled: false
-    tracing.export.enabled: false
-    logging.export.enabled: false
+  otlp.metrics.export.enabled: false
+  tracing.export.otlp.enabled: false
+  logging.export.otlp.enabled: false
 
 logging.level:
   org.springaicommunity: debug

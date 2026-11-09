@@ -1,15 +1,18 @@
 package com.example.nutritionplanner;
 
+import dev.langchain4j.agentic.observability.AgentInvocationError;
 import dev.langchain4j.agentic.observability.AgentListener;
 import dev.langchain4j.agentic.observability.AgentRequest;
 import dev.langchain4j.agentic.observability.AgentResponse;
+import dev.langchain4j.agentic.scope.AgenticScope;
 import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.MeterRegistry;
-import io.micrometer.core.instrument.Timer;
+import io.micrometer.observation.Observation;
+import io.micrometer.observation.ObservationRegistry;
+import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
 
 interface AgentListeners {
@@ -36,13 +39,14 @@ interface AgentListeners {
 
     class MicrometerAgentListener implements AgentListener {
 
-        private final MeterRegistry registry;
+        private final MeterRegistry meterRegistry;
+        private final ObservationRegistry observationRegistry;
         private final AtomicInteger activeAgents;
-        private final ConcurrentHashMap<Long, Timer.Sample> activeSamples = new ConcurrentHashMap<>();
 
-        public MicrometerAgentListener(MeterRegistry registry) {
-            this.registry = registry;
-            this.activeAgents = registry.gauge("agent_active", new AtomicInteger(0));
+        public MicrometerAgentListener(MeterRegistry meterRegistry, ObservationRegistry observationRegistry) {
+            this.meterRegistry = meterRegistry;
+            this.observationRegistry = observationRegistry;
+            this.activeAgents = meterRegistry.gauge("agent.active", new AtomicInteger(0));
         }
 
         @Override
@@ -53,26 +57,43 @@ interface AgentListeners {
         @Override
         public void beforeAgentInvocation(AgentRequest request) {
             activeAgents.incrementAndGet();
-            activeSamples.put(Thread.currentThread().threadId(), Timer.start(registry));
-
-            Counter.builder("agent_invocations_total")
+            Counter.builder("agent.invocations")
                     .tag("agent", request.agentName())
                     .description("Total agent invocations")
-                    .register(registry)
+                    .register(meterRegistry)
                     .increment();
+            Observation.createNotStarted("agent.duration", observationRegistry)
+                    .contextualName("agent " + request.agentName())
+                    .lowCardinalityKeyValue("agent", request.agentName())
+                    .start()
+                    .openScope();
         }
 
         @Override
         public void afterAgentInvocation(AgentResponse response) {
-            activeAgents.decrementAndGet();
+            finish(null);
+        }
 
-            var sample = activeSamples.remove(Thread.currentThread().threadId());
-            if (sample != null) {
-                sample.stop(Timer.builder("agent_duration")
-                        .tag("agent", response.agentName())
-                        .description("Agent execution duration")
-                        .register(registry));
-            }
+        @Override
+        public void onAgentInvocationError(AgentInvocationError error) {
+            finish(error.error());
+        }
+
+        @Override
+        public void onAgenticSystemSuspended(AgenticScope agenticScope) {
+            finish(null);
+        }
+
+        private void finish(@Nullable Throwable error) {
+            activeAgents.decrementAndGet();
+            var scope = observationRegistry.getCurrentObservationScope();
+            if (scope == null) return;
+
+            var observation = scope.getCurrentObservation();
+            scope.close();
+            observation.lowCardinalityKeyValue("outcome", error == null ? "success" : "error");
+            if (error != null) observation.error(error);
+            observation.stop();
         }
     }
 }
